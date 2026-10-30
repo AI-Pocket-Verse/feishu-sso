@@ -1,0 +1,20 @@
+# feishu-sso 的 nginx 片段：放进接入方站点的 server { } 里，让登录服务与接入方同域名，
+# 登录 cookie 才能被接入方读到。例如保存为 /etc/nginx/snippets/feishu-sso.conf，
+# 再在接入方的 server 块里写一行：include /etc/nginx/snippets/feishu-sso.conf;
+
+# 接口：/auth/api/* → api 的 /api/*（含飞书回调、whoami、机器人事件）
+location /auth/api/ {
+    proxy_pass http://127.0.0.1:4020/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Forwarded-Host  $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# 登录页（构建产物）
+location /auth/ {
+    alias __INSTALL_DIR__/web/dist/;
+    try_files $uri $uri/ /auth/index.html;
+}

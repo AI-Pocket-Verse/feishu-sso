@@ -1,0 +1,13 @@
+{
+  "name": "@feishu-sso/design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./structure.css": "./structure.css",
+    "./skins/a.css": "./skins/a.css"
+  },
+  "files": [
+    "structure.css",
+    "skins"
+  ]
+}

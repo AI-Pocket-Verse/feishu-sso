@@ -1,0 +1,146 @@
+import { AlertCircle, Loader2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { buildAuthorizeUrl, isLarkWebview } from '../authorize-url'
+
+/** 登录失败时 api 回跳带的错误码 → 给人看的说明。 */
+const ERROR_TEXT: Record<string, string> = {
+  provider_error: '飞书拒绝了这次授权，请重试。',
+  missing_params: '飞书回调缺少必要参数，请重新登录。',
+  invalid_or_expired_state: '登录链接已过期或不是在本浏览器发起的，请重新登录。',
+  exchange_failed: '向飞书换取登录凭证失败，请检查应用 App ID / Secret 与重定向 URL 配置。',
+}
+
+/**
+ * 登录页：点「使用飞书登录」跳到 /auth/api/feishu/authorize，在飞书内置浏览器里自动跳转。
+ * 访问路径为 /auth/login（本地开发为 http://localhost:5020/auth/login）。
+ */
+export function LoginPage() {
+  const { error, returnTo, isLark } = useMemo(() => {
+    const p = new URLSearchParams(window.location.search)
+    return {
+      error: p.get('error'),
+      returnTo: p.get('return_to') ?? '/',
+      isLark: isLarkWebview(navigator.userAgent),
+    }
+  }, [])
+
+  const [submitting, setSubmitting] = useState(false)
+  // Set when the Feishu-webview one-tap auto-redirect detects it's bouncing in
+  // a loop (the session isn't sticking) — we then STOP auto-redirecting and
+  // show the manual button + a hint instead of an infinite redirect storm.
+  const [loopDetected, setLoopDetected] = useState(false)
+
+  const authorizeUrl = buildAuthorizeUrl(window.location.origin, returnTo)
+
+  const onLogin = () => {
+    setSubmitting(true)
+    window.location.assign(authorizeUrl)
+  }
+
+  // Auto-redirect inside the Feishu app webview — UX expects a "one tap" flow.
+  // Loop breaker: if we auto-redirected moments ago and we're BACK on the login
+  // page, the session isn't establishing (cookie not recognized) — redirecting
+  // again would spin forever. Detect the quick re-entry, stop auto-redirecting,
+  // and fall back to the manual button + a hint so the user isn't trapped.
+  useEffect(() => {
+    if (!isLark || error) return
+    const KEY = 'sso_login_autoredirect'
+    const MIN_GAP_MS = 10_000
+    const MAX_TRIES = 2 // allow a couple of quick auto-redirects before declaring a loop
+    let at = 0
+    let n = 0
+    try {
+      const raw = JSON.parse(sessionStorage.getItem(KEY) || '{}')
+      at = Number(raw.at) || 0
+      n = Number(raw.n) || 0
+    } catch { /* ignore */ }
+    const now = Date.now()
+    // A gap longer than MIN_GAP_MS means the previous redirect resolved fine and
+    // this is a fresh attempt — reset the counter so a normal re-login (or a
+    // quick legitimate round-trip back to /login) isn't mistaken for a loop.
+    if (!at || now - at > MIN_GAP_MS) n = 0
+    if (n >= MAX_TRIES) {
+      setLoopDetected(true)
+      return
+    }
+    try { sessionStorage.setItem(KEY, JSON.stringify({ at: now, n: n + 1 })) } catch { /* ignore */ }
+    setSubmitting(true)
+    window.location.replace(authorizeUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <main className="min-h-screen flex items-center justify-center px-6 py-12">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-accent shadow-md mb-4">
+            <span className="text-2xl font-bold text-accent-fg">J</span>
+          </div>
+          <h1 className="text-2xl font-bold text-fg">Jeman 宇宙</h1>
+          <p className="text-sm text-fg-muted mt-1">使用飞书账号登录</p>
+        </div>
+
+        <div className="bg-elevated rounded-xl shadow-lg border border-line p-6">
+          {error && (
+            <div className="mb-4 flex items-start gap-2 p-3 bg-danger-bg border border-danger-line rounded-lg text-sm text-danger-fg">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold">登录失败</p>
+                <p className="text-xs mt-0.5 break-words opacity-80">{ERROR_TEXT[error] ?? error}</p>
+              </div>
+            </div>
+          )}
+
+          {loopDetected && !error && (
+            <div className="mb-4 flex items-start gap-2 p-3 bg-warning-bg border border-warning-line rounded-lg text-sm text-warning-fg">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold">自动登录未生效</p>
+                <p className="text-xs mt-0.5 break-words opacity-80">
+                  登录状态似乎没有被保存（可能是浏览器/飞书内置浏览器拦截了 Cookie）。请点击下方按钮重试，或改用系统浏览器打开。
+                </p>
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={onLogin}
+            disabled={submitting}
+            // 禁用态用 opacity 而不是换成灰色:换色要再挑一个「禁用灰」,那又是一个
+            // 产品私有色;透明度由 accent 导出,三套皮肤下都成立。
+            className="w-full py-3 px-4 rounded-lg bg-accent hover:bg-accent/90 disabled:opacity-50 text-accent-fg font-semibold text-sm shadow-sm transition-all inline-flex items-center justify-center gap-2"
+          >
+            {submitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                跳转中…
+              </>
+            ) : (
+              <>
+                <FeishuMark className="w-5 h-5" />
+                使用飞书登录
+              </>
+            )}
+          </button>
+
+          <p className="text-xs text-fg-faint mt-6 leading-relaxed">
+            点击登录即代表同意读取您的飞书基本资料，详细授权范围以飞书弹窗为准。
+          </p>
+        </div>
+
+        <p className="text-center text-xs text-fg-faint mt-6">
+          Jeman 宇宙 · 由飞书认证体系驱动
+        </p>
+      </div>
+    </main>
+  )
+}
+
+function FeishuMark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 6h9a5 5 0 0 1 0 10H7l-2 3V6z" fill="currentColor" opacity="0.95" />
+    </svg>
+  )
+}

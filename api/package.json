@@ -1,0 +1,40 @@
+{
+  "name": "@feishu-sso/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env.dev src/index.ts",
+    "prebuild": "prisma generate",
+    "build": "tsc",
+    "start": "node --import tsx --env-file=.env.prod dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node --env-file=.env.dev node_modules/prisma/build/index.js migrate dev",
+    "db:migrate:prod": "node --env-file=.env.prod node_modules/prisma/build/index.js migrate deploy",
+    "db:studio": "node --env-file=.env.dev node_modules/prisma/build/index.js studio",
+    "db:generate": "prisma generate",
+    "postinstall": "prisma generate",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.0",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/rate-limit": "^11.0.0",
+    "@feishu-sso/api-kit": "workspace:*",
+    "@feishu-sso/auth-core": "workspace:*",
+    "@feishu-sso/auth-provider-feishu": "workspace:*",
+    "@feishu-sso/db-kit": "workspace:*",
+    "@prisma/client": "5.22.0",
+    "fastify": "5.10.0",
+    "tsx": "^4.16.2",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@feishu-sso/tsconfig": "workspace:*",
+    "@types/node": "^20.14.10",
+    "prisma": "5.22.0",
+    "typescript": "5.4.5",
+    "vitest": "2.0.5"
+  }
+}

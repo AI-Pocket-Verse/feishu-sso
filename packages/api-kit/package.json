@@ -1,0 +1,31 @@
+{
+  "name": "@feishu-sso/api-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@feishu-sso/logger": "workspace:*",
+    "@feishu-sso/shared-types": "workspace:*",
+    "fastify-plugin": "^5.1.0"
+  },
+  "peerDependencies": {
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@feishu-sso/tsconfig": "workspace:*",
+    "@types/node": "^20.14.10",
+    "fastify": "^5.0.0",
+    "typescript": "5.4.5"
+  }
+}

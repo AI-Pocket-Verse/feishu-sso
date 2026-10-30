@@ -1,0 +1,16 @@
+/**
+ * 皮肤 token 必须在 @tailwind 之前引入 —— 它们定义的是 CSS 变量,
+ * Tailwind 生成的规则(rgb(var(--accent) / …))在运行时读取这些变量。
+ */
+@import '@feishu-sso/design-tokens/structure.css';
+@import '@feishu-sso/design-tokens/skins/a.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-h-screen bg-surface font-sans text-fg antialiased;
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "feishu-sso",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Feishu single sign-on for self-hosted web apps: OAuth login, shared session cookie, whoami endpoint, plus bot notifications, Feishu doc reading and an optional chat bot bridge",
+  "license": "MIT",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.6",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "bootstrap": "node api/scripts/bootstrap.mjs && pnpm --filter @feishu-sso/api db:migrate",
+    "dev": "pnpm --parallel --filter @feishu-sso/api --filter @feishu-sso/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": ">=5.4.21 <6",
+      "esbuild": ">=0.25.0 <0.26",
+      "vitest": ">=2.1.9 <3",
+      "micromatch": ">=4.0.8"
+    }
+  }
+}

@@ -1,0 +1,70 @@
+// feishu-sso 数据库：用户、飞书 token 与登录会话。
+//
+// 只有本服务连接这个库；接入方一律通过 GET /auth/api/whoami 获取身份。
+// 迁移：pnpm --filter @feishu-sso/api db:migrate（开发）/ db:migrate:prod（生产）
+//
+// token 字段落库前用 AES-256-GCM 加密（见 db-kit 的 createSecretBox）。
+
+generator client {
+  provider = "prisma-client-js"
+  // 生成到本包目录内，src/ 与 dist/ 都用 ../generated/prisma 引用
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                       String   @id @default(cuid())
+  open_id                  String   @unique
+  // Not @unique: SQLite treats NULLs as distinct, which would let one-off
+  // missing union_ids pile up unintentionally. Lookup index instead.
+  union_id                 String?
+  user_id_feishu           String?
+  name                     String
+  en_name                  String?
+  email                    String?
+  mobile                   String?
+  avatar_url               String?
+  avatar_thumb             String?
+  tenant_key               String?
+  // JSON-serialized full user_info payload from Feishu (forward-compat).
+  raw_user_info            String
+
+  // Encrypted Feishu tokens (AES-256-GCM, format: v1:iv:tag:ct)
+  user_access_token        String
+  user_token_expires_at    DateTime
+  refresh_token            String
+  refresh_token_expires_at DateTime
+  scopes                   String   // space-separated scopes the app REQUESTED at last login (baseline for the scope-change re-login gate; see src/scopes.ts)
+
+  created_at               DateTime @default(now())
+  last_login_at            DateTime
+  disabled                 Boolean  @default(false)
+  needs_relogin            Boolean  @default(false)
+
+  sessions                 Session[]
+
+  @@index([union_id])
+  // Token refresh worker scans by expiry — keep this hot.
+  @@index([user_token_expires_at])
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid()) // opaque value carried in the session cookie
+  user_id      String
+  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  remember_me  Boolean  @default(false)
+  expires_at   DateTime
+  last_seen_at DateTime @default(now())
+  ip           String?
+  user_agent   String?
+  created_at   DateTime @default(now())
+
+  @@index([user_id])
+  @@index([expires_at])
+  @@map("sessions")
+}
