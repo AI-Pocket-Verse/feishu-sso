@@ -2,6 +2,7 @@ import { AlertCircle, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { buildAuthorizeUrl, isLarkWebview } from '../authorize-url'
+import { fetchSiteName } from '../site-name'
 
 /** 登录失败时 api 回跳带的错误码 → 给人看的说明。 */
 const ERROR_TEXT: Record<string, string> = {
@@ -23,6 +24,15 @@ export function LoginPage() {
       returnTo: p.get('return_to') ?? '/',
       isLark: isLarkWebview(navigator.userAgent),
     }
+  }, [])
+
+  // 站点名由服务端配置；取到之前留空，避免先闪一下默认名再换掉。
+  const [siteName, setSiteName] = useState<string | null>(null)
+  useEffect(() => {
+    void fetchSiteName(window.location.origin).then((name) => {
+      setSiteName(name)
+      document.title = `登录 · ${name}`
+    })
   }, [])
 
   const [submitting, setSubmitting] = useState(false)
@@ -75,9 +85,9 @@ export function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-accent shadow-md mb-4">
-            <span className="text-2xl font-bold text-accent-fg">J</span>
+            <span className="text-2xl font-bold text-accent-fg">{siteName?.charAt(0) ?? ''}</span>
           </div>
-          <h1 className="text-2xl font-bold text-fg">Jeman 宇宙</h1>
+          <h1 className="text-2xl font-bold text-fg min-h-8">{siteName}</h1>
           <p className="text-sm text-fg-muted mt-1">使用飞书账号登录</p>
         </div>
 
@@ -130,7 +140,7 @@ export function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-fg-faint mt-6">
-          Jeman 宇宙 · 由飞书认证体系驱动
+          {siteName ? `${siteName} · ` : ''}由飞书认证体系驱动
         </p>
       </div>
     </main>

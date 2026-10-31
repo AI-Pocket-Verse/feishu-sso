@@ -264,4 +264,40 @@ describe('POST /api/feishu/reaction (internal · 点赞)', () => {
     expect(r.json()).toEqual({ ok: true })
     await app.close()
   })
+
+  it('rejects path-traversal tokens before they reach the Feishu SDK', async () => {
+    const app = await build()
+    for (const url of [
+      '/api/feishu/docx/..%2F..%2Fcontact%2Fv3%2Fusers%2Fou_x%3Fx%3D',
+      '/api/feishu/media/..%2Fx',
+      '/api/feishu/bitable/app1/..%2Ftbl/records',
+      '/api/feishu/wiki/node?token=..%2Fx',
+    ]) {
+      const r = await app.inject({ method: 'GET', url, headers: { cookie: 'sso_session=sid-1' } })
+      expect(r.statusCode, url).toBe(400)
+      expect(r.json().error).toBe('invalid_input')
+    }
+    await app.close()
+  })
+})
+
+describe('internal token', () => {
+  it('rejects an empty x-internal-token header when the configured token is empty', async () => {
+    const { env } = await import('../env')
+    const saved = env.INTERNAL_API_TOKEN
+    ;(env as { INTERNAL_API_TOKEN: string }).INTERNAL_API_TOKEN = ''
+    try {
+      const app = await build()
+      const r = await app.inject({
+        method: 'POST',
+        url: '/api/feishu/reaction',
+        headers: { 'x-internal-token': '' },
+        payload: { messageId: 'om_1', emojiType: 'THUMBSUP' },
+      })
+      expect(r.statusCode).toBe(401)
+      await app.close()
+    } finally {
+      ;(env as { INTERNAL_API_TOKEN: string }).INTERNAL_API_TOKEN = saved
+    }
+  })
 })

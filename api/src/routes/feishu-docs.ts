@@ -36,6 +36,10 @@ async function requireUserId(req: FastifyRequest, reply: FastifyReply): Promise<
 //   feishu_upstream     → anything else
 function sendFeishuError(reply: FastifyReply, err: unknown): void {
   if (err instanceof FeishuTokenError) {
+    if (err.reason === 'upstream_unavailable') {
+      reply.code(503).send({ error: 'feishu_unavailable', message: '暂时连不上飞书，请稍后重试' })
+      return
+    }
     reply.code(401).send({ error: 'need_relogin' })
     return
   }
@@ -66,6 +70,8 @@ function sendFeishuError(reply: FastifyReply, err: unknown): void {
 // match progress via response timing).
 function internalTokenOk(got: unknown): boolean {
   if (typeof got !== 'string') return false
+  // 口令留空 = 关闭内部接口；空串经 timingSafeEqual 会相等，必须先排除。
+  if (got === '' || env.INTERNAL_API_TOKEN === '') return false
   const a = Buffer.from(got)
   const b = Buffer.from(env.INTERNAL_API_TOKEN)
   return a.length === b.length && timingSafeEqual(a, b)
@@ -96,7 +102,23 @@ function validCard(card: unknown): boolean {
   return JSON.stringify(c).length <= 20_000
 }
 
+// 飞书资源 token 只含字母数字、下划线和连字符。路径参数必须先过这道校验：
+// SDK 不会转义，`..%2F` 之类的值会让请求落到任意飞书开放接口。
+const SAFE_PARAM = /^[A-Za-z0-9_-]+$/
+
 export const feishuDocsRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', async (req, reply) => {
+    const values = [
+      ...Object.values((req.params ?? {}) as Record<string, string>),
+      (req.query as { token?: unknown } | undefined)?.token,
+    ]
+    for (const v of values) {
+      if (v !== undefined && (typeof v !== 'string' || !SAFE_PARAM.test(v))) {
+        return reply.code(400).send({ error: 'invalid_input', message: '资源 token 格式不正确' })
+      }
+    }
+  })
+
   // POST /api/feishu/upload-image — INTERNAL app→app endpoint(x-internal-token):
   // 业务服务把本地图片字节传来,机器人身份(tenant token)上传到飞书素材库,
   // 返回 image_key 供卡片 img 元素 / 图片消息引用。octet-stream,≤5MB。

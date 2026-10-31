@@ -13,6 +13,7 @@
 import { env } from '../env'
 import { prisma, secretBox } from '../db'
 import { feishu } from '../feishu'
+import { isTransientRefreshError } from '../feishu-token'
 
 let timer: ReturnType<typeof setInterval> | null = null
 let running = false
@@ -53,6 +54,8 @@ export function startTokenRefreshWorker(log: { info: (...a: unknown[]) => void; 
         })
       } catch (err) {
         log.error({ err, userId: u.id }, 'token-refresh: failed')
+        // 网络不通或飞书 5xx：refresh_token 没被消耗，留到下一轮重试。
+        if (isTransientRefreshError(err)) continue
         // One-shot policy: mark for relogin so we don't keep retrying a dead token.
         await prisma.user.update({ where: { id: u.id }, data: { needs_relogin: true } }).catch(() => undefined)
       }

@@ -12,13 +12,28 @@ import { feishu } from './feishu'
 
 const REFRESH_BUFFER_MS = 60_000
 
+const NETWORK_ERROR_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN', 'ECONNRESET', 'ENETUNREACH'])
+
+/**
+ * 刷新失败是否属于「请求没有被飞书处理」的瞬时故障（网络不通、飞书 5xx）。
+ * 这类失败没有消耗单次有效的 refresh_token，不能把用户标成 needs_relogin，下次重试即可。
+ * 其余失败（飞书明确拒绝等）保守地按 token 已失效处理。
+ */
+export function isTransientRefreshError(err: unknown): boolean {
+  const e = err as { code?: unknown; response?: { status?: unknown }; cause?: { code?: unknown } } | null
+  const code = e?.code ?? e?.cause?.code
+  if (typeof code === 'string' && NETWORK_ERROR_CODES.has(code)) return true
+  const status = e?.response?.status
+  return typeof status === 'number' && status >= 500
+}
+
 /** Pure: should a token expiring at `expiresAt` be refreshed relative to `now`? */
 export function needsRefresh(expiresAt: Date, now: Date = new Date()): boolean {
   return expiresAt.getTime() <= now.getTime() + REFRESH_BUFFER_MS
 }
 
 export class FeishuTokenError extends Error {
-  constructor(public reason: 'need_relogin') {
+  constructor(public reason: 'need_relogin' | 'upstream_unavailable') {
     super(reason)
   }
 }
@@ -68,7 +83,8 @@ async function loadFreshUserAccessToken(userId: string): Promise<string> {
       },
     })
     return fresh.user_access_token
-  } catch {
+  } catch (err) {
+    if (isTransientRefreshError(err)) throw new FeishuTokenError('upstream_unavailable')
     await prisma.user.update({ where: { id: u.id }, data: { needs_relogin: true } }).catch(() => undefined)
     throw new FeishuTokenError('need_relogin')
   }

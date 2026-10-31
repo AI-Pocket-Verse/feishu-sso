@@ -74,9 +74,12 @@ describe('GET /api/whoami', () => {
     const app = await build()
     const r = await app.inject({ url: '/api/whoami', headers: { cookie: 'sso_session=sid' } })
 
-    const body = r.json() as { authenticated: boolean; user: { id: string } }
+    const body = r.json() as { authenticated: boolean; user: { id: string }; session: { id: string } }
     expect(body.authenticated).toBe(true)
     expect(body.user.id).toBe('u1')
+    // session.id 不能是 cookie 值（httpOnly 凭据），只给不可逆的展示标识。
+    expect(body.session.id).not.toBe('s1')
+    expect(body.session.id).toMatch(/^[0-9a-f]{16}$/)
     // Slide happened: touchSession called AND the cookie re-issued with a fresh max-age.
     expect(mockTouch).toHaveBeenCalledWith('sid')
     const header = setCookieHeader(r)
@@ -94,6 +97,15 @@ describe('GET /api/whoami', () => {
     expect((r.json() as { authenticated: boolean }).authenticated).toBe(true)
     expect(mockTouch).not.toHaveBeenCalled()
     expect(r.headers['set-cookie']).toBeUndefined()
+    await app.close()
+  })
+
+  it('a malformed cookie value (a=%) does not turn into a 500', async () => {
+    mockLoad.mockResolvedValue(null)
+    const app = await build()
+    const r = await app.inject({ url: '/api/whoami', headers: { cookie: 'other=100%; sso_session=sid' } })
+    expect(r.statusCode).toBe(200)
+    expect(r.json()).toEqual({ authenticated: false })
     await app.close()
   })
 })

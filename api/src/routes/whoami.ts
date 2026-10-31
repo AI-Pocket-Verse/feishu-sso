@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import type { FastifyPluginAsync } from 'fastify'
 
 import type { Session as SessionDTO, User as UserDTO, WhoamiResponse } from '@feishu-sso/auth-core'
@@ -55,7 +57,8 @@ function toSessionDTO(s: {
   last_seen_at: Date
 }): SessionDTO {
   return {
-    id: s.id,
+    // 真实 session id 就是 httpOnly cookie 的值，不能交给脚本；这里给不可逆的展示用标识。
+    id: createHash('sha256').update(s.id).digest('hex').slice(0, 16),
     user_id: s.user_id,
     remember_me: s.remember_me,
     expires_at: s.expires_at.toISOString(),

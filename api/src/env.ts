@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
+import { DEV_INTERNAL_TOKEN, checkInternalToken, parseTrustProxy } from './env-checks'
+
+export { DEV_INTERNAL_TOKEN }
+
 // 可选项留空（`X=`）当作未设置，否则 .env 里写了空值的可选 URL 会让校验失败。
 const emptyAsUndefined = (v: unknown) => (v === '' ? undefined : v)
 
@@ -14,14 +18,18 @@ const RegexList = z
       .map((pattern) => new RegExp(pattern)),
   )
 
-/** INTERNAL_API_TOKEN 的开发占位值。生产环境仍是它时拒绝启动。 */
-export const DEV_INTERNAL_TOKEN = 'dev-internal-token-change-in-prod'
-
 const Env = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4020),
   // 默认只监听本机，由同机的反向代理对外提供服务。
   HOST: z.string().default('127.0.0.1'),
+  // 信任哪些反向代理的 X-Forwarded-* 头（传给 Fastify trustProxy）：loopback、
+  // 逗号分隔的 IP / CIDR、跳数，或 true / false。默认只信任本机回环的代理。
+  TRUST_PROXY: z.string().default('loopback').transform(parseTrustProxy),
+  // 登录页展示的站点名
+  SITE_NAME: z.preprocess(emptyAsUndefined, z.string().default('统一登录')),
+  // 飞书机器人卡片里的助手称呼
+  ASSISTANT_NAME: z.preprocess(emptyAsUndefined, z.string().default('AI')),
 
   // Feishu
   FEISHU_APP_ID: z.string().min(1, 'FEISHU_APP_ID required'),
@@ -67,7 +75,15 @@ const Env = z.object({
   FEISHU_EVENT_VERIFICATION_TOKEN: z.string().default(''),
   // 机器人的对话后端（如 team-knowledge）内网地址。不设置时机器人只回复「未接入」，
   // 登录、通知、读文档等其余能力不受影响。协议见 docs/bot-backend.md。
-  BOT_BACKEND_URL: z.preprocess(emptyAsUndefined, z.string().url().optional()),
+  // 末尾的 / 会去掉，避免拼出 //api/...
+  BOT_BACKEND_URL: z.preprocess(
+    emptyAsUndefined,
+    z
+      .string()
+      .url()
+      .optional()
+      .transform((u) => u?.replace(/\/+$/, '')),
+  ),
 
   // SQLite 路径，相对路径以 prisma/ 目录为基准（由 Prisma 读取，这里只校验已设置）
   DATABASE_URL: z.string().min(1, 'DATABASE_URL required'),
@@ -83,10 +99,12 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data
-if (raw.NODE_ENV === 'production' && raw.INTERNAL_API_TOKEN === DEV_INTERNAL_TOKEN) {
-  console.error('[feishu-sso] INTERNAL_API_TOKEN must be set to a strong shared secret in production')
+const tokenCheck = checkInternalToken(raw)
+if (tokenCheck.fatal) {
+  console.error(`[feishu-sso] ${tokenCheck.fatal}`)
   process.exit(1)
 }
+if (tokenCheck.warn) console.warn(`[feishu-sso] warning: ${tokenCheck.warn}`)
 const secureRaw = raw.SESSION_COOKIE_SECURE
 const secure =
   secureRaw === undefined || secureRaw === ''

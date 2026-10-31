@@ -31,7 +31,8 @@ export const feishuRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Querystring: { return_to?: string; remember_me?: string } }>(
     '/api/feishu/authorize',
     async (req, reply) => {
-      const return_to = safeReturnTo(req.query.return_to)
+      // 与本次请求同源（经 trustProxy 还原后的 scheme + Host）的绝对 URL 也放行。
+      const return_to = safeReturnTo(req.query.return_to, `${req.protocol}://${req.host}`)
       // Default to a long-lived (remember) session: the "30天内免登录" toggle was
       // removed and login is always long-lived now, so only an explicit opt-out
       // ("0"/"false") yields a short session. This keeps "stay logged in" from
@@ -140,7 +141,7 @@ export const feishuRoutes: FastifyPluginAsync = async (app) => {
           scopes: requestedScopesStr,
           last_login_at: now,
           needs_relogin: false,
-          disabled: false,
+          // 不要在这里写 disabled：被禁用的用户重新登录不能自动恢复。
         },
       })
 

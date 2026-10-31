@@ -105,7 +105,7 @@ if (flags.passive) {
     chat_type: 'group',
     message_type: 'text',
     content: JSON.stringify({ text: `@_user_1 ${text}` }),
-    mentions: [{ key: '@_user_1', id: { open_id: await fetchBotOpenId(token) }, name: 'Jeman' }],
+    mentions: [{ key: '@_user_1', id: { open_id: await fetchBotOpenId(token) }, name: 'AI' }],
   }
 } else {
   message = {

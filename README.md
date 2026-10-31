@@ -64,15 +64,23 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 | `AUTH_DATA_KEY` | — | token 加密密钥（32 字节 base64），`pnpm bootstrap` 会自动生成。生产环境单独生成并妥善保管，丢失后已登录用户需重新登录 |
 | `DATABASE_URL` | — | SQLite 路径，相对路径以 `api/prisma/` 为基准；生产建议写绝对路径 |
 | `HOST` / `PORT` | `127.0.0.1` / `4020` | api 监听地址 |
+| `TRUST_PROXY` | `loopback` | 信任哪些反向代理的 `X-Forwarded-*` 头，直接传给 Fastify `trustProxy`：`loopback`、逗号分隔的 IP / CIDR、跳数或 `true` / `false`。限流按真实客户端 IP 分桶依赖它；nginx 与本服务不在同一台机器时改成 nginx 的地址 |
+| `SITE_NAME` | `统一登录` | 登录页标题和页脚显示的站点名 |
+| `ASSISTANT_NAME` | `AI` | 飞书机器人卡片里的助手称呼 |
 | `SESSION_COOKIE_NAME` | `sso_session` | 登录 cookie 名，接入方默认读这个名字 |
 | `SESSION_COOKIE_DOMAIN` | 空 | 留空只对当前域名生效；多个子域名共享登录时填 `.example.com` |
 | `SESSION_COOKIE_SECURE` | 开发 `false`，其余 `true` | HTTPS 部署保持 `true` |
-| `SESSION_TTL_DAYS` / `SESSION_SLIDING` | `30` / `true` | 会话有效期；开启滑动续期后只有连续 30 天不活动才会过期 |
-| `ALLOWED_RETURN_TO` | 空 | 登录后允许跳回的跨域地址（正则，空格分隔）。同域路径始终允许，其他地址一律跳回 `/auth/`，防止开放重定向 |
+| `SESSION_REMEMBER_TTL_DAYS` | `30` | 登录页发起的登录恒为「记住我」，会话有效期由它决定 |
+| `SESSION_TTL_DAYS` | `30` | 仅在调用方显式传 `remember_me=0` 时使用的短会话有效期 |
+| `SESSION_SLIDING` | `true` | 滑动续期：开启后只有连续不活动超过有效期才会过期 |
+| `SESSION_COOKIE_SAMESITE` | `lax` | 登录 cookie 的 SameSite，设为 `none` 时必须同时保持 `SESSION_COOKIE_SECURE=true` |
+| `STATE_TTL_SECONDS` | `300` | 登录流程 state 的有效秒数 |
+| `REFRESH_LOOKAHEAD_MINUTES` / `REFRESH_INTERVAL_MINUTES` | `10` / `30` | 后台刷新飞书 token：提前多少分钟刷新、多久扫描一次 |
+| `ALLOWED_RETURN_TO` | 空 | 登录后允许跳回的**其他域名**地址（正则，空格分隔）。同域路径和与请求同源的绝对 URL 始终允许，其余一律跳回 `/auth/`，防止开放重定向 |
 | `CORS_ORIGINS` | 空 | 允许跨域调用 whoami / logout 的前端来源，空格分隔。同域部署时留空 |
-| `INTERNAL_API_TOKEN` | 开发占位值 | 服务间共享口令，见「接入方使用的接口」。生产环境仍是占位值时拒绝启动 |
+| `INTERNAL_API_TOKEN` | 开发占位值 | 服务间共享口令，见「接入方使用的接口」。生产环境或监听非回环地址时仍是占位值会拒绝启动；留空表示关闭内部接口 |
 | `FEISHU_EVENT_ENCRYPT_KEY` / `FEISHU_EVENT_VERIFICATION_TOKEN` | 空 | 机器人事件的加密与校验，见「可选：飞书机器人」 |
-| `BOT_BACKEND_URL` | 未设置 | 机器人的对话后端地址 |
+| `BOT_BACKEND_URL` | 未设置 | 机器人的对话后端地址（末尾的 `/` 会自动去掉） |
 
 ## 接入你的应用
 
@@ -85,9 +93,17 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 
 | 场景 | 做法 |
 | --- | --- |
-| 去登录 | 跳转到 `/auth/login?return_to=<登录后回到的地址>` |
+| 去登录 | 跳转到 `/auth/login?return_to=<登录后回到的地址>`，`return_to` 的取值见下 |
 | 判断当前用户 | 后端把浏览器的 cookie 原样转发给 `GET /api/whoami`，返回 `{"authenticated": false}` 或 `{"authenticated": true, "user": {...}, "session": {...}}` |
 | 退出登录 | 浏览器 `POST /auth/api/logout`（带 cookie） |
+
+**`return_to` 约定**（接入方统一照此传，登录后回跳以它为准，不满足时落回 `/auth/`）：
+
+1. 同源路径，如 `/kb/doc?id=1`（单个 `/` 开头，不含空白、控制字符和反斜杠）。
+2. **与本次请求同源的绝对 URL**，如 `https://kb.example.com/kb/doc?id=1`：scheme、域名、端口必须与浏览器访问本服务时一致。本服务按反向代理转发的 `X-Forwarded-Proto` / `X-Forwarded-Host` 还原（需 `TRUST_PROXY` 信任该代理，nginx 片段已设置这两个头）。接入方直接传 `window.location.href` 即可，不必配置 `ALLOWED_RETURN_TO`。
+3. 其他域名的地址，只有匹配 `ALLOWED_RETURN_TO` 才放行。
+
+`whoami` 返回的 `session.id` 是不可逆的展示标识，不是 cookie 值，不能用来冒充会话。
 
 本地联调时，接入方的 web 设 `VITE_SSO_BASE=http://localhost:5020/auth`，本服务的 `CORS_ORIGINS` 填接入方的开发地址（如 `http://localhost:5070`）。浏览器的 cookie 不区分端口，所以 `localhost` 不同端口之间可以共用登录状态。
 
@@ -104,11 +120,13 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 
 请求格式见 [docs/bot-backend.md](docs/bot-backend.md) 末尾。
 
+这些接口只供本机的业务服务调用：nginx 片段已对公网返回 404，业务服务请直连 `http://127.0.0.1:4020/api/feishu/<接口名>`（不要走域名）。`INTERNAL_API_TOKEN` 留空时这四个接口拒绝所有请求。
+
 读飞书文档的接口以**当前登录用户**的身份调用（带用户的登录 cookie，不需要口令），用户本人在飞书里能看的文档才读得到：`/api/feishu/docx/:documentId`、`/api/feishu/docx/:documentId/blocks`、`/api/feishu/wiki/node?token=`、`/api/feishu/media/:fileToken`、`/api/feishu/board/:whiteboardId/{image,nodes}`、`/api/feishu/bitable/:appToken/:tableId/{fields,records}`、`/api/feishu/sheet/:sheetToken/:sheetId/values`。需要开通对应的读取权限并写进 `FEISHU_SCOPES`。失败时返回可区分的错误码：`need_relogin`、`feishu_need_reauth`、`feishu_scope_disabled`、`feishu_permission`、`feishu_upstream`。
 
 ## 可选：飞书机器人
 
-成员私聊机器人，或在群里 @ 机器人提问，机器人先回一张「Jeman 正在思考…」卡片，再流式更新成完整回答。本服务只负责收发消息，回答由你接入的对话后端生成（例如同系列的 team-knowledge），接口约定见 [docs/bot-backend.md](docs/bot-backend.md)。
+成员私聊机器人，或在群里 @ 机器人提问，机器人先回一张「AI 正在思考…」卡片（称呼可用 `ASSISTANT_NAME` 改），再流式更新成完整回答。本服务只负责收发消息，回答由你接入的对话后端生成（例如同系列的 team-knowledge），接口约定见 [docs/bot-backend.md](docs/bot-backend.md)。
 
 没有配置 `BOT_BACKEND_URL` 时，机器人对所有提问只回复「还没有接入对话后端」，登录和其他能力不受影响。
 
@@ -135,7 +153,7 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 ```bash
 git clone <repo> /opt/feishu-sso && cd /opt/feishu-sso
 pnpm install && pnpm build
-cp api/.env.example api/.env.prod   # 改为 NODE_ENV=production，DATABASE_URL 用绝对路径，填飞书凭证、重新生成 AUTH_DATA_KEY 和 INTERNAL_API_TOKEN
+cp api/.env.example api/.env.prod   # 同机 nginx 反代保持 TRUST_PROXY=loopback； 改为 NODE_ENV=production，DATABASE_URL 用绝对路径，填飞书凭证、重新生成 AUTH_DATA_KEY 和 INTERNAL_API_TOKEN
 pnpm --filter @feishu-sso/api db:migrate:prod
 
 sudo cp deploy/systemd.service.template /etc/systemd/system/feishu-sso.service

@@ -2,6 +2,13 @@
 # 登录 cookie 才能被接入方读到。例如保存为 /etc/nginx/snippets/feishu-sso.conf，
 # 再在接入方的 server 块里写一行：include /etc/nginx/snippets/feishu-sso.conf;
 
+# 内部接口（口令鉴权，只给本机业务服务调用）不对公网开放：
+# 业务服务请直连 http://127.0.0.1:4020/api/feishu/<名字>，不要走域名。
+# 正则 location 优先于下面的前缀 location。
+location ~ ^/auth/api/feishu/(notify|reply|reaction|upload-image)/?$ {
+    return 404;
+}
+
 # 接口：/auth/api/* → api 的 /api/*（含飞书回调、whoami、机器人事件）
 location /auth/api/ {
     proxy_pass http://127.0.0.1:4020/api/;
@@ -9,7 +16,8 @@ location /auth/api/ {
     proxy_set_header Host              $host;
     proxy_set_header X-Forwarded-Host  $host;
     proxy_set_header X-Real-IP         $remote_addr;
-    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    # 覆盖而不是追加：客户端自带的 X-Forwarded-For 不能被信任，限流按它分桶会被绕过
+    proxy_set_header X-Forwarded-For   $remote_addr;
     proxy_set_header X-Forwarded-Proto $scheme;
 }
 

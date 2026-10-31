@@ -66,10 +66,19 @@ export interface BridgeDeps {
   /** 把图片字节交给对话后端落盘,换 /uploads/<file> 视图(供随后的 /chat 引用)。 */
   storeImage: (openId: string, bytes: Buffer) => Promise<string>
   now: () => number
+  /** 卡片里的助手称呼，默认「AI」（env ASSISTANT_NAME）。 */
+  assistantName?: string
+  /** 诊断日志；默认 console.error。不要传入口令。 */
+  logError?: (info: Record<string, unknown>, msg: string) => void
 }
+
+// 对话后端迟迟不返回响应头就放弃，避免卡片永远停在「思考中」。
+const BACKEND_HEADERS_TIMEOUT_MS = 60_000
 
 export const defaultBridgeDeps: BridgeDeps = {
   backendConfigured: !!env.BOT_BACKEND_URL,
+  assistantName: env.ASSISTANT_NAME,
+  logError: (info, msg) => console.error(`[feishu-sso] ${msg}`, info),
   sendCard: (chatId, card) => feishuDocs.sendInteractiveCardToChat(chatId, card),
   updateCard: (messageId, card) => feishuDocs.updateInteractiveCard(messageId, card),
   fetchStream: (body) =>
@@ -77,6 +86,8 @@ export const defaultBridgeDeps: BridgeDeps = {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-internal-token': env.INTERNAL_API_TOKEN },
       body: JSON.stringify(body),
+      // 只限制等到响应头的时间；回答是长流，不能整体加超时。
+      signal: AbortSignal.timeout(BACKEND_HEADERS_TIMEOUT_MS),
     }),
   downloadImage: (messageId, fileKey) => feishuDocs.downloadMessageImage(messageId, fileKey),
   storeImage: async (openId, bytes) => {
@@ -88,6 +99,7 @@ export const defaultBridgeDeps: BridgeDeps = {
         'x-open-id': openId,
       },
       body: new Uint8Array(bytes),
+      signal: AbortSignal.timeout(30_000),
     })
     if (!res.ok) throw new Error(`bot backend image store HTTP ${res.status}`)
     const data = (await res.json()) as { url?: string }
@@ -231,7 +243,9 @@ async function streamAnswerToCard(
   deps: BridgeDeps,
 ): Promise<void> {
   const { scope, imageUrls } = args
-  const messageId = await deps.sendCard(args.chatId, textCard('Jeman 正在思考…'))
+  const name = deps.assistantName ?? 'AI'
+  const logError = deps.logError ?? (() => {})
+  const messageId = await deps.sendCard(args.chatId, textCard(`${name} 正在思考…`))
 
   let full = ''
   let errored: string | null = null
@@ -249,7 +263,13 @@ async function streamAnswerToCard(
     // (restoring) / 400 (bad input). Without this guard those bytes parse to no
     // frames and the card would settle on a misleading "（无内容）".
     if (!res.ok) {
-      errored = res.status === 503 ? 'Jeman 维护中，请稍后再试。' : '连接 Jeman 失败，请稍后再试。'
+      logError({ status: res.status }, 'bot backend returned non-2xx')
+      errored =
+        res.status === 503
+          ? `${name} 维护中，请稍后再试。`
+          : res.status === 401
+            ? '机器人口令与对话后端不一致（bot_backend_unauthorized），请联系管理员检查 INTERNAL_API_TOKEN。'
+            : `连接 ${name} 失败（bot_backend_http_${res.status}），请稍后再试。`
     }
     const reader = res.ok ? res.body?.getReader() : undefined
     if (reader) {
@@ -296,14 +316,15 @@ async function streamAnswerToCard(
         }
       }
     }
-  } catch {
+  } catch (err) {
+    logError({ err: String(err) }, 'bot backend request failed')
     // 拉流中途失败(如对话后端重启 / 网络中断)→ 不让「思考中」卡片卡死,
     // 已累计的部分文本保留,补一句友好错误。
-    if (!errored && !needLogin) errored = '连接 Jeman 失败，请稍后再试。'
+    if (!errored && !needLogin) errored = `连接 ${name} 失败（bot_backend_unreachable），请稍后再试。`
   }
 
   // Final card state. A final-update failure propagates so the caller logs it.
   const finalText =
-    needLogin ?? (errored ? (full ? `${full}\n\n（${errored}）` : errored) : (full || '（Jeman 暂时没有返回内容，换个说法再问我试试~）'))
+    needLogin ?? (errored ? (full ? `${full}\n\n（${errored}）` : errored) : (full || `（${name} 暂时没有返回内容，换个说法再问我试试~）`))
   await deps.updateCard(messageId, textCard(finalText))
 }

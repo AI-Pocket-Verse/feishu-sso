@@ -141,7 +141,7 @@ describe('runFeishuChatBridge', () => {
     }
     // Must NOT throw — the failure is caught and rendered on the card.
     await runFeishuChatBridge({ chatId: 'oc_1', openId: 'ou_1', text: 'hi' }, deps)
-    expect(updates.at(-1)).toContain('连接 Jeman 失败')
+    expect(updates.at(-1)).toContain('连接 AI 失败')
   })
 
   it('shows a maintenance message when the backend is restoring (503, not SSE)', async () => {
@@ -160,6 +160,7 @@ describe('runFeishuChatBridge', () => {
 
   it('shows a friendly error on a non-200 backend response (e.g. 401 token mismatch)', async () => {
     const updates: string[] = []
+    const logs: Array<{ info: Record<string, unknown>; msg: string }> = []
     const deps: BridgeDeps = {
       backendConfigured: true,
       ...imageDeps,
@@ -167,9 +168,13 @@ describe('runFeishuChatBridge', () => {
       updateCard: async (_id: string, card: unknown) => { updates.push(cardText(card)) },
       fetchStream: async () => new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }),
       now: () => 0,
+      logError: (info, msg) => { logs.push({ info, msg }) },
     }
     await runFeishuChatBridge({ chatId: 'oc_1', openId: 'ou_1', text: 'hi' }, deps)
-    expect(updates.at(-1)).toContain('连接 Jeman 失败')
+    // 口令不一致要有独立文案，并且写日志供运维排查。
+    expect(updates.at(-1)).toContain('口令')
+    expect(updates.at(-1)).toContain('bot_backend_unauthorized')
+    expect(logs).toEqual([{ info: { status: 401 }, msg: 'bot backend returned non-2xx' }])
   })
 })
 
