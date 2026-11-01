@@ -27,6 +27,15 @@ describe('safeReturnTo (open-redirect guard)', () => {
     expect(safeReturnTo('/\\evil.example.org/')).toBe('/auth/')
   })
 
+  // 点段归一化后会变成 `//evil.example.org`，放进 Location 就是协议相对地址，跳到外站。
+  it('rejects dot segments that normalize into a protocol-relative path', () => {
+    expect(safeReturnTo('/.//evil.example.org')).toBe('/auth/')
+    expect(safeReturnTo('/a/..//evil.example.org')).toBe('/auth/')
+    expect(safeReturnTo('/%2e//evil.example.org')).toBe('/auth/')
+    expect(safeReturnTo('/%2E%2E//evil.example.org/x?y#z')).toBe('/auth/')
+    expect(safeReturnTo('/a/./b/../c')).toBe('/a/c')
+  })
+
   it('rejects control characters browsers strip (tab / newline bypass)', () => {
     expect(safeReturnTo('/\t/evil.example.org')).toBe('/auth/')
     expect(safeReturnTo('/\n/evil.example.org')).toBe('/auth/')

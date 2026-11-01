@@ -22,9 +22,13 @@ export function safeReturnTo(returnTo: string | undefined, requestOrigin?: strin
     if (!SAFE_PATH.test(returnTo)) return FALLBACK
     // 兜底：按浏览器的解析规则确认确实落在本站。返回解析后的路径，非 ASCII 字符
     // 由此转成百分号编码 —— 原样放进 Location 头会让 reply.redirect 抛 ERR_INVALID_CHAR。
+    // 归一化会折叠点段（`/.//evil.com`、`/%2e//evil.com` → `//evil.com`），所以结果要再校验一次，
+    // 否则单独放进 Location 就成了协议相对地址。
     try {
       const u = new URL(returnTo, 'http://x.invalid')
-      return u.origin === 'http://x.invalid' ? u.pathname + u.search + u.hash : FALLBACK
+      if (u.origin !== 'http://x.invalid') return FALLBACK
+      const out = u.pathname + u.search + u.hash
+      return SAFE_PATH.test(out) ? out : FALLBACK
     } catch {
       return FALLBACK
     }
