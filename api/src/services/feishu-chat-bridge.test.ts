@@ -8,7 +8,10 @@ vi.mock('../feishu', () => ({
   feishuDocs: { sendInteractiveCardToChat: vi.fn(), updateInteractiveCard: vi.fn() },
 }))
 
-import { BACKEND_OFF_TEXT, runFeishuChatBridge, analyzePendingImages, type BridgeDeps } from './feishu-chat-bridge'
+import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
+
+import { BACKEND_OFF_TEXT, runFeishuChatBridge, analyzePendingImages, fetchWithHeadersTimeout, type BridgeDeps } from './feishu-chat-bridge'
 import { clearAllPendingImages } from './feishu-image-buffer'
 
 // 新增的图片中转 deps:旧用例不涉及图片,统一给个不会被调用的兜底实现。
@@ -386,5 +389,41 @@ describe('runFeishuChatBridge — 纯图片缓冲 + 按钮卡片', () => {
     expect(bodies[0]).toMatchObject({ text: '', images: ['/uploads/p1.png'], scope: 'p2p' })
     // 已消费 → 再点一次「分析」返回 false。
     expect(await analyzePendingImages({ chatId: 'oc_an', openId: 'ou_1' }, deps)).toBe(false)
+  })
+})
+
+// 回答是长流：超时只能管「等到响应头」，不能把之后的流也切断。
+describe('fetchWithHeadersTimeout', () => {
+  async function serve(handler: Parameters<typeof createServer>[1]): Promise<{ url: string; server: Server }> {
+    const server = createServer(handler)
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
+    return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/`, server }
+  }
+
+  it('响应头到达后，超过时限的流仍能读完', async () => {
+    const { url, server } = await serve((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' })
+      res.write('a')
+      setTimeout(() => res.end('b'), 1500)
+    })
+    try {
+      // 时限 500ms，流在第 1.5 秒才结束：读完说明计时器只管响应头。
+      const res = await fetchWithHeadersTimeout(url, {}, 500)
+      expect(await res.text()).toBe('ab')
+    } finally {
+      server.close()
+    }
+  })
+
+  it('迟迟不返回响应头时按超时失败', async () => {
+    const { url, server } = await serve((_req, res) => {
+      setTimeout(() => res.end('late'), 3000)
+    })
+    try {
+      await expect(fetchWithHeadersTimeout(url, {}, 300)).rejects.toMatchObject({ name: 'TimeoutError' })
+    } finally {
+      server.closeAllConnections()
+      server.close()
+    }
   })
 })

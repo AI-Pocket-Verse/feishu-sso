@@ -75,6 +75,20 @@ export interface BridgeDeps {
 // 对话后端迟迟不返回响应头就放弃，避免卡片永远停在「思考中」。
 const BACKEND_HEADERS_TIMEOUT_MS = 60_000
 
+/**
+ * 只限制「等到响应头」的时间：拿到响应头后清掉计时器，之后的长流不受影响。
+ * 不能用 AbortSignal.timeout —— 它会连响应体的读取一起中断，把超过时限的回答截断。
+ */
+export async function fetchWithHeadersTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(new DOMException('headers timeout', 'TimeoutError')), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: ac.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const defaultBridgeDeps: BridgeDeps = {
   backendConfigured: !!env.BOT_BACKEND_URL,
   assistantName: env.ASSISTANT_NAME,
@@ -82,13 +96,15 @@ export const defaultBridgeDeps: BridgeDeps = {
   sendCard: (chatId, card) => feishuDocs.sendInteractiveCardToChat(chatId, card),
   updateCard: (messageId, card) => feishuDocs.updateInteractiveCard(messageId, card),
   fetchStream: (body) =>
-    fetch(`${env.BOT_BACKEND_URL}/api/internal/feishu/chat`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-internal-token': env.INTERNAL_API_TOKEN },
-      body: JSON.stringify(body),
-      // 只限制等到响应头的时间；回答是长流，不能整体加超时。
-      signal: AbortSignal.timeout(BACKEND_HEADERS_TIMEOUT_MS),
-    }),
+    fetchWithHeadersTimeout(
+      `${env.BOT_BACKEND_URL}/api/internal/feishu/chat`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-internal-token': env.INTERNAL_API_TOKEN },
+        body: JSON.stringify(body),
+      },
+      BACKEND_HEADERS_TIMEOUT_MS,
+    ),
   downloadImage: (messageId, fileKey) => feishuDocs.downloadMessageImage(messageId, fileKey),
   storeImage: async (openId, bytes) => {
     const res = await fetch(`${env.BOT_BACKEND_URL}/api/internal/feishu/image`, {

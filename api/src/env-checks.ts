@@ -8,7 +8,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
  * （proxy-addr 支持 loopback、逗号分隔的 IP / CIDR 列表）。
  */
 export function parseTrustProxy(v: string): boolean | number | string {
-  const s = v.trim()
+  const s = v.trim() || 'loopback'
   if (s.toLowerCase() === 'true') return true
   if (s.toLowerCase() === 'false') return false
   if (/^\d+$/.test(s)) return Number(s)

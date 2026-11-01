@@ -20,9 +20,11 @@ export function safeReturnTo(returnTo: string | undefined, requestOrigin?: strin
 
   if (returnTo.startsWith('/')) {
     if (!SAFE_PATH.test(returnTo)) return FALLBACK
-    // 兜底：按浏览器的解析规则确认确实落在本站。
+    // 兜底：按浏览器的解析规则确认确实落在本站。返回解析后的路径，非 ASCII 字符
+    // 由此转成百分号编码 —— 原样放进 Location 头会让 reply.redirect 抛 ERR_INVALID_CHAR。
     try {
-      return new URL(returnTo, 'http://x.invalid').origin === 'http://x.invalid' ? returnTo : FALLBACK
+      const u = new URL(returnTo, 'http://x.invalid')
+      return u.origin === 'http://x.invalid' ? u.pathname + u.search + u.hash : FALLBACK
     } catch {
       return FALLBACK
     }

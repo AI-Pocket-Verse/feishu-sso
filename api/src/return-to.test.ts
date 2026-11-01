@@ -17,6 +17,11 @@ describe('safeReturnTo (open-redirect guard)', () => {
     expect(safeReturnTo('/app/#top')).toBe('/app/#top')
   })
 
+  // 原样放进 Location 头会让 reply.redirect 抛 ERR_INVALID_CHAR，登录成功后看到 500。
+  it('percent-encodes non-ASCII paths so the redirect header stays valid', () => {
+    expect(safeReturnTo('/kb/中文?q=é')).toBe('/kb/%E4%B8%AD%E6%96%87?q=%C3%A9')
+  })
+
   it('rejects protocol-relative and backslash tricks', () => {
     expect(safeReturnTo('//evil.example.org/')).toBe('/auth/')
     expect(safeReturnTo('/\\evil.example.org/')).toBe('/auth/')
