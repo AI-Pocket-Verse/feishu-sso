@@ -14,7 +14,7 @@
 
 ## 快速开始
 
-需要 Node.js ≥ 20.6 和 pnpm 9，以及一个飞书自建应用（创建步骤见下文）。
+需要 Node.js ≥ 20.19（推荐 22 或 24） 和 pnpm 9，以及一个飞书自建应用（创建步骤见下文）。
 
 ```bash
 pnpm install     # 安装依赖并生成 Prisma client
