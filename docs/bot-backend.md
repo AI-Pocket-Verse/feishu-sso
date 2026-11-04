@@ -1,71 +1,73 @@
-# 机器人对话后端协议
+# Bot chat backend protocol
 
-feishu-sso 持有飞书应用凭证，负责收发飞书消息；「怎么回答」交给一个独立的对话后端（例如同系列的 team-knowledge）。两者之间只走下面这几个内网 HTTP 接口。
+English | [简体中文](bot-backend-CN.md)
 
-- 后端地址：feishu-sso 的 `BOT_BACKEND_URL`，例如 `http://127.0.0.1:4030`。不设置时机器人对所有提问只回复「还没有接入对话后端」，下文所有转发都不会发生。
-- 鉴权：每个请求都带请求头 `x-internal-token`，值是双方共同配置的 `INTERNAL_API_TOKEN`。后端应拒绝口令不符的请求（返回 401）。
-- 身份：机器人事件与登录挂在同一个飞书应用上，所以消息发送者的 `open_id` 与 `/api/whoami` 返回的 `user.open_id` 一致，后端可以据此对应到自己的账号。
+feishu-sso holds the Feishu app credentials and sends and receives Feishu messages; "how to answer" is left to a separate chat backend (for example the sibling project team-knowledge). The two only talk over the internal HTTP endpoints below.
 
-## feishu-sso 调用后端
+- Backend URL: feishu-sso's `BOT_BACKEND_URL`, e.g. `http://127.0.0.1:4030`. When it is not set, the bot answers every question with "not connected to a chat backend yet" and none of the forwarding below happens.
+- Authentication: every request carries the header `x-internal-token` with the `INTERNAL_API_TOKEN` both sides share. The backend should reject requests with a wrong token (401).
+- Identity: bot events and login use the same Feishu app, so a message sender's `open_id` equals the `user.open_id` returned by `/api/whoami`, and the backend can map it to its own account.
 
-### 对话：`POST /api/internal/feishu/chat`
+## feishu-sso calls the backend
 
-私聊机器人，或在群里 @ 机器人时调用。
+### Chat: `POST /api/internal/feishu/chat`
 
-请求体（JSON）：
+Called when someone messages the bot directly or @-mentions it in a group.
 
-| 字段 | 类型 | 说明 |
+Request body (JSON):
+
+| Field | Type | Description |
 | --- | --- | --- |
-| `openId` | string | 提问人的 open_id |
-| `text` | string | 提问文字，已去掉 @ 占位符；纯图片提问时为空字符串 |
-| `scope` | `"p2p"` \| `"group"` | 私聊或群聊。群聊的回答全群可见，后端应只使用公开内容 |
-| `images` | string[]，可选 | 图片地址，来自下面的图片接口，最多 3 张 |
+| `openId` | string | The asker's open_id |
+| `text` | string | Question text with the @ placeholder removed; empty string for image-only questions |
+| `scope` | `"p2p"` \| `"group"` | Direct message or group. Group answers are visible to the whole group, so the backend should only use public content |
+| `images` | string[], optional | Image URLs from the image endpoint below, at most 3 |
 
-成功时返回 `text/event-stream`，每帧为 `event: <名称>` 加一行 `data: <JSON>`，以空行结束：
+On success, respond with `text/event-stream`. Each frame is `event: <name>` plus one `data: <JSON>` line, ending with a blank line:
 
-| 事件 | data | feishu-sso 的处理 |
+| Event | data | What feishu-sso does |
 | --- | --- | --- |
-| `token` | `{"text": "..."}` | 追加到回答，节流后更新卡片，形成打字机效果 |
-| `queued` | `{"message": "..."}` | 同一会话上一轮还没答完，把卡片换成这段排队提示 |
-| `need_login` | `{"message": "..."}` | 提问人还不能使用（如未开通），卡片最终显示这段话 |
-| `error` | `{"message": "..."}` | 卡片末尾附上这段错误说明 |
-| `done` | 任意 | 结束 |
+| `token` | `{"text": "..."}` | Appends to the answer and updates the card (throttled) for a typewriter effect |
+| `queued` | `{"message": "..."}` | The previous turn of the same conversation is still running; replaces the card with this queue notice |
+| `need_login` | `{"message": "..."}` | The asker can't use the bot yet (e.g. not enabled); the card ends with this text |
+| `error` | `{"message": "..."}` | Appends this error description to the card |
+| `done` | any | End |
 
-非 200 时请返回 JSON（不要返回 SSE）：503 表示维护中，卡片显示「维护中，请稍后再试」；其他状态显示「连接失败」。
+For non-200 responses, return JSON (not SSE): 503 means maintenance and the card shows "under maintenance, please try again later"; other statuses show "could not connect". The language of these fixed card texts follows feishu-sso's `BOT_LANG`; the `message` of `queued`, `need_login` and `error` comes from the backend and is shown as is.
 
-### 图片落盘：`POST /api/internal/feishu/image`
+### Storing images: `POST /api/internal/feishu/image`
 
-用户给机器人发图片时，feishu-sso 先从飞书下载，再交给后端保存，换回可以放进 `images` 的地址。
+When a user sends the bot an image, feishu-sso downloads it from Feishu and hands it to the backend, getting back a URL that can go into `images`.
 
-- 请求：`Content-Type: application/octet-stream`，请求体为图片字节；请求头 `x-open-id` 为上传人 open_id。
-- 响应：`{"url": "/uploads/xxx.png"}`。
+- Request: `Content-Type: application/octet-stream`, body is the image bytes; header `x-open-id` is the uploader's open_id.
+- Response: `{"url": "/uploads/xxx.png"}`.
 
-### 群聊旁听：`POST /api/internal/feishu/group-observe`
+### Listening to groups: `POST /api/internal/feishu/group-observe`
 
-机器人所在群里没有 @ 机器人的文字消息会转发过来，由后端决定要不要主动回答。需要飞书权限 `im:message.group_msg`。
+Text messages in the bot's groups that do not @-mention the bot are forwarded here, and the backend decides whether to answer proactively. Requires the Feishu scope `im:message.group_msg`.
 
-- 请求体：`{"chatId", "messageId", "openId", "senderName", "text"}`。
-- 后端应立即返回 200，判断与回复异步进行；要回复时调用 feishu-sso 的 `POST /api/feishu/reply`。
+- Request body: `{"chatId", "messageId", "openId", "senderName", "text"}`.
+- The backend should return 200 immediately and decide / reply asynchronously; to reply, call feishu-sso's `POST /api/feishu/reply`.
 
-### 卡片按钮回调
+### Card button callbacks
 
-后端发出的卡片里，按钮的 `value` 决定点击后转发到哪里。feishu-sso 先在 3 秒内给点击人回一个提示（toast），再异步转发：
+In cards sent by the backend, the button's `value` decides where a click is forwarded. feishu-sso first shows the clicker a toast within 3 seconds, then forwards asynchronously:
 
-| 按钮 `value` | 转发到 | 请求体 |
+| Button `value` | Forwarded to | Request body |
 | --- | --- | --- |
-| `{"k": "doc_audit_ack", "h": "<hash>"}`（勾选器） | `/api/internal/doc-audit/acknowledge` | `{"hash", "operatorOpenId", "checked"}` |
+| `{"k": "doc_audit_ack", "h": "<hash>"}` (checker) | `/api/internal/doc-audit/acknowledge` | `{"hash", "operatorOpenId", "checked"}` |
 | `{"k": "group_qa_up" \| "group_qa_down", "h": "<hash>"}` | `/api/internal/group-qa/feedback` | `{"hash", "helpful"}` |
 | `{"kind": "expert_escalation", "escalationId", "option"}` | `/api/internal/expert-escalation/resolve` | `{"escalationId", "resolution", "operatorOpenId"}` |
 
-`doc-audit/acknowledge` 的响应可以带 `{"card": {...}}`，feishu-sso 会用它原地更新被点击的那张卡片。
+The response of `doc-audit/acknowledge` may include `{"card": {...}}`; feishu-sso uses it to update the clicked card in place.
 
-## 后端调用 feishu-sso
+## The backend calls feishu-sso
 
-以下接口同样用 `x-internal-token` 鉴权，消息都以机器人身份发出。卡片支持 1.0（`elements`）和 2.0（`schema: "2.0"` + `body.elements`）两种结构，序列化后不超过 20000 字符。
+These endpoints also authenticate with `x-internal-token`, and messages are sent as the bot. Cards may use schema 1.0 (`elements`) or 2.0 (`schema: "2.0"` + `body.elements`), at most 20000 characters when serialized.
 
-| 接口 | 请求体 | 说明 |
+| Endpoint | Request body | Description |
 | --- | --- | --- |
-| `POST /api/feishu/notify` | `{"openId": "ou_…", "card"}` 或 `{"chatId": "oc_…", "card"}` | 给某人或某个群发卡片，返回 `{"messageId"}` |
-| `POST /api/feishu/reply` | `{"messageId": "om_…", "card"}` | 引用回复一条收到的消息 |
-| `POST /api/feishu/reaction` | `{"messageId": "om_…", "emojiType": "THUMBSUP"}` | 给消息加表情回复，需要权限 `im:message.reactions:write_only` |
-| `POST /api/feishu/upload-image` | 图片字节（octet-stream，≤ 5 MB） | 上传到飞书素材库，返回 `{"imageKey"}`，可用于卡片的 `img` 元素 |
+| `POST /api/feishu/notify` | `{"openId": "ou_…", "card"}` or `{"chatId": "oc_…", "card"}` | Send a card to a person or a group; returns `{"messageId"}` |
+| `POST /api/feishu/reply` | `{"messageId": "om_…", "card"}` | Reply to a received message, quoting it |
+| `POST /api/feishu/reaction` | `{"messageId": "om_…", "emojiType": "THUMBSUP"}` | Add an emoji reaction; requires the scope `im:message.reactions:write_only` |
+| `POST /api/feishu/upload-image` | Image bytes (octet-stream, ≤ 5 MB) | Upload to Feishu and return `{"imageKey"}`, usable in a card's `img` element |
