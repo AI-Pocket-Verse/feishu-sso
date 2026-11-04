@@ -29,12 +29,15 @@ api/generated/
 .DS_Store
 *.swp
 
-# Private notes, scratch files, local AI tool config
+# Private notes, scratch files
 .private/
 .tmp/
-.claude/settings.local.json
+
+# Maintainer's AI tooling: collaboration notes, progress, task plans and local config
+AGENTS.md
+CLAUDE.md
+ROADMAP.md
+/goals/
+/process/
+.claude/
 .playwright-mcp/
-
-
-# Claude Code worktrees
-.claude/worktrees/
