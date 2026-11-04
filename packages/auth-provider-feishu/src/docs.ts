@@ -12,11 +12,13 @@
 import { createHash } from 'node:crypto'
 import * as lark from '@larksuiteoapi/node-sdk'
 
+import { sdkDomain, type FeishuDomain } from './domain'
+
 export interface FeishuDocsConfig {
   appId: string
   appSecret: string
-  /** Domain — feishu.cn by default. */
-  domain?: string
+  /** 飞书中国版（默认）或国际版 Lark。 */
+  domain?: FeishuDomain
 }
 
 /** Pure: flatten paginated block responses into one ordered array. */
@@ -134,7 +136,7 @@ export function createFeishuDocsClient(cfg: FeishuDocsConfig): FeishuDocsClient 
     appId: cfg.appId,
     appSecret: cfg.appSecret,
     appType: lark.AppType.SelfBuild,
-    domain: cfg.domain ?? lark.Domain.Feishu,
+    domain: sdkDomain(cfg.domain),
   })
 
   const getDocxMeta: FeishuDocsClient['getDocxMeta'] = async (token, documentId) => {

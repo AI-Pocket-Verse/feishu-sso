@@ -15,17 +15,19 @@ const { tokenCreate, refreshCreate, userInfoGet, withUserAccessTokenMock } = vi.
 }))
 
 vi.mock('@larksuiteoapi/node-sdk', () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    authen: {
-      v1: {
-        oidcAccessToken: { create: tokenCreate },
-        oidcRefreshAccessToken: { create: refreshCreate },
-        userInfo: { get: userInfoGet },
+  Client: vi.fn().mockImplementation(function () {
+    return {
+      authen: {
+        v1: {
+          oidcAccessToken: { create: tokenCreate },
+          oidcRefreshAccessToken: { create: refreshCreate },
+          userInfo: { get: userInfoGet },
+        },
       },
-    },
-  })),
+    }
+  }),
   AppType: { SelfBuild: 'self_build', ISV: 'isv' },
-  Domain: { Feishu: 'https://open.feishu.cn' },
+  Domain: { Feishu: 'https://open.feishu.cn', Lark: 'https://open.larksuite.com' },
   withUserAccessToken: withUserAccessTokenMock,
 }))
 
@@ -50,6 +52,14 @@ describe('getAuthorizeUrl', () => {
     expect(url.searchParams.get('response_type')).toBe('code')
     expect(url.searchParams.get('state')).toBe('state-xyz')
     expect(url.searchParams.get('scope')).toBe('contact:user.email:readonly')
+  })
+
+  it('domain=lark 时授权页走 larksuite.com，SDK 用 Lark 域名', async () => {
+    const { Client } = await import('@larksuiteoapi/node-sdk')
+    const p = createFeishuProvider({ ...baseCfg, domain: 'lark' })
+    const url = new URL(p.getAuthorizeUrl('s'))
+    expect(url.origin + url.pathname).toBe('https://passport.larksuite.com/suite/passport/oauth/authorize')
+    expect(vi.mocked(Client).mock.calls.at(-1)?.[0]).toMatchObject({ domain: 'https://open.larksuite.com' })
   })
 
   it('omits scope when none configured', () => {

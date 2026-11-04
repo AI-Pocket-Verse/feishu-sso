@@ -2,38 +2,40 @@ import { AlertCircle, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { buildAuthorizeUrl, isLarkWebview } from '../authorize-url'
-import { fetchSiteName } from '../site-name'
-
-/** 登录失败时 api 回跳带的错误码 → 给人看的说明。 */
-const ERROR_TEXT: Record<string, string> = {
-  provider_error: '飞书拒绝了这次授权，请重试。',
-  missing_params: '飞书回调缺少必要参数，请重新登录。',
-  invalid_or_expired_state: '登录链接已过期或不是在本浏览器发起的，请重新登录。',
-  exchange_failed: '向飞书换取登录凭证失败，请检查应用 App ID / Secret 与重定向 URL 配置。',
-}
+import { brandName, detectLang, translate, type MessageKey, type Provider } from '../i18n'
+import { fetchSiteInfo } from '../site-info'
 
 /**
  * 登录页：点「使用飞书登录」跳到 /auth/api/feishu/authorize，在飞书内置浏览器里自动跳转。
  * 访问路径为 /auth/login（本地开发为 http://localhost:5020/auth/login）。
  */
 export function LoginPage() {
-  const { error, returnTo, isLark } = useMemo(() => {
+  const { error, returnTo, isLark, lang } = useMemo(() => {
     const p = new URLSearchParams(window.location.search)
     return {
       error: p.get('error'),
       returnTo: p.get('return_to') ?? '/',
       isLark: isLarkWebview(navigator.userAgent),
+      lang: detectLang(window.location.search, navigator.languages ?? [navigator.language]),
     }
   }, [])
 
-  // 站点名由服务端配置；取到之前留空，避免先闪一下默认名再换掉。
+  // 站点名与飞书版本由服务端配置；站点名取到之前留空，避免先闪一下默认名再换掉。
   const [siteName, setSiteName] = useState<string | null>(null)
+  const [provider, setProvider] = useState<Provider>('feishu')
+  const brand = brandName(lang, provider)
+  const t = (key: MessageKey, params?: Record<string, string>) => translate(lang, key, { brand, ...params })
+
   useEffect(() => {
-    void fetchSiteName(window.location.origin).then((name) => {
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en'
+    document.title = translate(lang, 'login.docTitle')
+    void fetchSiteInfo(window.location.origin).then((info) => {
+      const name = info.name ?? translate(lang, 'site.defaultName')
       setSiteName(name)
-      document.title = `登录 · ${name}`
+      setProvider(info.provider)
+      document.title = translate(lang, 'login.docTitleWithSite', { name })
     })
-  }, [])
+  }, [lang])
 
   const [submitting, setSubmitting] = useState(false)
   // Set when the Feishu-webview one-tap auto-redirect detects it's bouncing in
@@ -88,7 +90,7 @@ export function LoginPage() {
             <span className="text-2xl font-bold text-accent-fg">{siteName?.charAt(0) ?? ''}</span>
           </div>
           <h1 className="text-2xl font-bold text-fg min-h-8">{siteName}</h1>
-          <p className="text-sm text-fg-muted mt-1">使用飞书账号登录</p>
+          <p className="text-sm text-fg-muted mt-1">{t('login.subtitle')}</p>
         </div>
 
         <div className="bg-elevated rounded-xl shadow-lg border border-line p-6">
@@ -96,8 +98,8 @@ export function LoginPage() {
             <div className="mb-4 flex items-start gap-2 p-3 bg-danger-bg border border-danger-line rounded-lg text-sm text-danger-fg">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="font-semibold">登录失败</p>
-                <p className="text-xs mt-0.5 break-words opacity-80">{ERROR_TEXT[error] ?? error}</p>
+                <p className="font-semibold">{t('login.failed')}</p>
+                <p className="text-xs mt-0.5 break-words opacity-80">{errorText(error, t)}</p>
               </div>
             </div>
           )}
@@ -106,10 +108,8 @@ export function LoginPage() {
             <div className="mb-4 flex items-start gap-2 p-3 bg-warning-bg border border-warning-line rounded-lg text-sm text-warning-fg">
               <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <div className="min-w-0">
-                <p className="font-semibold">自动登录未生效</p>
-                <p className="text-xs mt-0.5 break-words opacity-80">
-                  登录状态似乎没有被保存（可能是浏览器/飞书内置浏览器拦截了 Cookie）。请点击下方按钮重试，或改用系统浏览器打开。
-                </p>
+                <p className="font-semibold">{t('login.loopTitle')}</p>
+                <p className="text-xs mt-0.5 break-words opacity-80">{t('login.loopBody')}</p>
               </div>
             </div>
           )}
@@ -124,27 +124,32 @@ export function LoginPage() {
             {submitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                跳转中…
+                {t('login.redirecting')}
               </>
             ) : (
               <>
                 <FeishuMark className="w-5 h-5" />
-                使用飞书登录
+                {t('login.button')}
               </>
             )}
           </button>
 
-          <p className="text-xs text-fg-faint mt-6 leading-relaxed">
-            点击登录即代表同意读取您的飞书基本资料，详细授权范围以飞书弹窗为准。
-          </p>
+          <p className="text-xs text-fg-faint mt-6 leading-relaxed">{t('login.consent')}</p>
         </div>
 
         <p className="text-center text-xs text-fg-faint mt-6">
-          {siteName ? `${siteName} · ` : ''}由飞书认证体系驱动
+          {siteName ? `${siteName} · ` : ''}
+          {t('login.poweredBy')}
         </p>
       </div>
     </main>
   )
+}
+
+/** 登录失败时 api 回跳带的错误码 → 当前语言的说明；不认识的错误码原样显示。 */
+const ERROR_KEYS = new Set<string>(['provider_error', 'missing_params', 'invalid_or_expired_state', 'exchange_failed'])
+function errorText(code: string, t: (key: MessageKey) => string): string {
+  return ERROR_KEYS.has(code) ? t(`error.${code}` as MessageKey) : code
 }
 
 function FeishuMark({ className }: { className?: string }) {

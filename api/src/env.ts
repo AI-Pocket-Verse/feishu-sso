@@ -24,14 +24,27 @@ const Env = z.object({
   // 默认只监听本机，由同机的反向代理对外提供服务。
   HOST: z.string().default('127.0.0.1'),
   // 信任哪些反向代理的 X-Forwarded-* 头（传给 Fastify trustProxy）：loopback、
-  // 逗号分隔的 IP / CIDR、跳数，或 true / false。默认只信任本机回环的代理。
-  TRUST_PROXY: z.string().default('loopback').transform(parseTrustProxy),
-  // 登录页展示的站点名
-  SITE_NAME: z.preprocess(emptyAsUndefined, z.string().default('统一登录')),
+  // 逗号分隔的 IP / CIDR，或 true / false（不支持跳数）。默认只信任本机回环的代理。
+  TRUST_PROXY: z
+    .string()
+    .default('loopback')
+    .transform((v, ctx) => {
+      try {
+        return parseTrustProxy(v)
+      } catch (e) {
+        ctx.addIssue({ code: 'custom', message: (e as Error).message })
+        return z.NEVER
+      }
+    }),
+  // 登录页展示的站点名；留空时登录页按界面语言显示默认名（统一登录 / Single Sign-On）
+  SITE_NAME: z.preprocess(emptyAsUndefined, z.string().optional()),
   // 飞书机器人卡片里的助手称呼
   ASSISTANT_NAME: z.preprocess(emptyAsUndefined, z.string().default('AI')),
+  // 机器人卡片与按钮提示的语言。服务端看不到提问人的界面语言，所以由部署方指定
+  BOT_LANG: z.preprocess(emptyAsUndefined, z.enum(['zh', 'en']).default('zh')),
 
-  // Feishu
+  // Feishu。FEISHU_DOMAIN 选择飞书中国版（feishu）或国际版 Lark（lark）
+  FEISHU_DOMAIN: z.preprocess(emptyAsUndefined, z.enum(['feishu', 'lark']).default('feishu')),
   FEISHU_APP_ID: z.string().min(1, 'FEISHU_APP_ID required'),
   FEISHU_APP_SECRET: z.string().min(1, 'FEISHU_APP_SECRET required'),
   FEISHU_REDIRECT_URI: z.string().url(),
@@ -84,6 +97,10 @@ const Env = z.object({
       .optional()
       .transform((u) => u?.replace(/\/+$/, '')),
   ),
+
+  // 单端口模式（Docker）：设置后 api 同时托管登录页（web/dist）并接受 /auth/api/* 前缀，
+  // 前面的反向代理只需把 /auth/ 整体转发过来。不设置时由 nginx 托管登录页（见 deploy/）。
+  WEB_DIST_DIR: z.preprocess(emptyAsUndefined, z.string().optional()),
 
   // SQLite 路径，相对路径以 prisma/ 目录为基准（由 Prisma 读取，这里只校验已设置）
   DATABASE_URL: z.string().min(1, 'DATABASE_URL required'),

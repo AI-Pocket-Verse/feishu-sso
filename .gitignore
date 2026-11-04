@@ -35,3 +35,6 @@ api/generated/
 .claude/settings.local.json
 .playwright-mcp/
 
+
+# Claude Code worktrees
+.claude/worktrees/

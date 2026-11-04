@@ -1,0 +1,26 @@
+services:
+  feishu-sso:
+    build: .
+    image: feishu-sso:local
+    restart: unless-stopped
+    # Feishu credentials, AUTH_DATA_KEY, INTERNAL_API_TOKEN, etc.
+    # Copy api/.env.example to api/.env.prod and fill it in (see README "Docker").
+    env_file: api/.env.prod
+    environment:
+      # Container-specific settings; these override the same keys in api/.env.prod
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4020"
+      DATABASE_URL: file:/data/feishu-sso.db
+      WEB_DIST_DIR: /app/web/dist
+      # Requests arrive from the Docker bridge (a private address), not loopback
+      TRUST_PROXY: loopback,uniquelocal
+    ports:
+      # Bound to this machine only: put nginx / Caddy in front and forward /auth/ here.
+      # Business services on this host call internal APIs at http://127.0.0.1:4020/api/feishu/...
+      - "127.0.0.1:4020:4020"
+    volumes:
+      - feishu-sso-data:/data
+
+volumes:
+  feishu-sso-data:

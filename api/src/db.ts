@@ -1,6 +1,6 @@
 import { PrismaClient } from '../generated/prisma/index.js'
 
-import { createSecretBox, enableWal, gracefulShutdown } from '@feishu-sso/db-kit'
+import { createSecretBox, enableWal } from '@feishu-sso/db-kit'
 
 import { env } from './env'
 
@@ -13,6 +13,6 @@ export const prisma = new PrismaClient({
 export const secretBox = createSecretBox(env.AUTH_DATA_KEY)
 
 export async function initDb(): Promise<void> {
+  // 退出信号由 index.ts 统一处理：先关 HTTP 服务再断开数据库，这里不再另注册。
   if (env.DATABASE_URL.startsWith('file:')) await enableWal(prisma)
-  gracefulShutdown(prisma)
 }

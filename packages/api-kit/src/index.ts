@@ -28,7 +28,7 @@ const plugin: FastifyPluginAsync<ApiKitOptions> = async (app, opts) => {
       // intentional, safe messages.
       reply.status(status).send({
         code: 'internal_error',
-        message: '服务器内部错误',
+        message: 'Internal server error',
       })
       return
     }

@@ -16,12 +16,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "1.66.0"
+    "@larksuiteoapi/node-sdk": "1.76.0"
   },
   "devDependencies": {
     "@feishu-sso/tsconfig": "workspace:*",
     "@types/node": "^20.14.10",
     "typescript": "5.4.5",
-    "vitest": "2.0.5"
+    "vitest": "4.1.12"
   }
 }

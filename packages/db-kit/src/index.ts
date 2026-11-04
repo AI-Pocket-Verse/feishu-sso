@@ -3,7 +3,6 @@
  *
  * Database utilities:
  *   - Prisma WAL bootstrap (SQLite)
- *   - Graceful shutdown
  *   - AES-256-GCM helpers for at-rest encryption of sensitive fields
  *     (used to store Feishu user_access_token / refresh_token)
  *
@@ -15,23 +14,12 @@ export interface PrismaLike {
   // PRAGMA statements may or may not return rows depending on the variant —
   // $queryRawUnsafe tolerates both, $executeRawUnsafe rejects rows on SQLite.
   $queryRawUnsafe: (sql: string) => Promise<unknown>
-  $disconnect: () => Promise<void>
 }
 
 export async function enableWal(prisma: PrismaLike): Promise<void> {
   await prisma.$queryRawUnsafe('PRAGMA journal_mode=WAL;')
   await prisma.$queryRawUnsafe('PRAGMA synchronous=NORMAL;')
   await prisma.$queryRawUnsafe('PRAGMA foreign_keys=ON;')
-}
-
-export function gracefulShutdown(prisma: PrismaLike): void {
-  const close = async (signal: string) => {
-    console.log(`[db-kit] received ${signal}, closing prisma`)
-    await prisma.$disconnect()
-    process.exit(0)
-  }
-  process.once('SIGTERM', () => void close('SIGTERM'))
-  process.once('SIGINT', () => void close('SIGINT'))
 }
 
 // ────────────────────────────────────────────────────────────────────────────

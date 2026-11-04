@@ -15,6 +15,7 @@
  */
 import type { FastifyPluginAsync } from 'fastify'
 import { decryptFeishuEvent } from '@feishu-sso/auth-provider-feishu'
+import { botText } from '../bot-i18n'
 import { env } from '../env'
 import { runFeishuChatBridge, analyzePendingImages } from '../services/feishu-chat-bridge'
 import { getPendingImages, pendingKey, IMAGE_PROMPT_KEY, MAX_PENDING_IMAGES } from '../services/feishu-image-buffer'
@@ -214,18 +215,18 @@ export const feishuEventsRoutes: FastifyPluginAsync = async (app) => {
         app.log.info({ op: v.op, scope: 'card' }, 'feishu card action received')
         if (v.op === 'analyze') {
           if (!getPendingImages(pendingKey(chatId, openId), Date.now())) {
-            return reply.send({ toast: { type: 'warning', content: '图片已过期或已分析过，请重新发送图片。' } })
+            return reply.send({ toast: { type: 'warning', content: botText(env.BOT_LANG, 'imagesExpired') } })
           }
           setImmediate(() => {
             void analyzePendingImages({ chatId, openId }).catch((e) => app.log.error(e, 'feishu analyze pending images failed'))
           })
-          return reply.send({ toast: { type: 'info', content: '开始分析图片…' } })
+          return reply.send({ toast: { type: 'info', content: botText(env.BOT_LANG, 'toastAnalyzeStart') } })
         }
         if (v.op === 'more') {
-          return reply.send({ toast: { type: 'info', content: `好的，请继续发送图片（最多 ${MAX_PENDING_IMAGES} 张）。` } })
+          return reply.send({ toast: { type: 'info', content: botText(env.BOT_LANG, 'toastMoreImages', { max: MAX_PENDING_IMAGES }) } })
         }
         if (v.op === 'text') {
-          return reply.send({ toast: { type: 'info', content: '好的，请输入文字，发送后将连同图片一起分析。' } })
+          return reply.send({ toast: { type: 'info', content: botText(env.BOT_LANG, 'toastEnterText') } })
         }
       }
       // 文档体检勾选器:勾(checked=true,确认)/ 取消勾(false,撤销)。
@@ -247,11 +248,11 @@ export const feishuEventsRoutes: FastifyPluginAsync = async (app) => {
               // toast 已乐观回过(3s 内),这里只补「持久化 + 广播」。下面两种「没成功」要可观测,
               // 否则用户看到「已确认」但其实没落库(转发失败 / 该条已不在最新卡)会无声无息。
               if (!res.ok) {
-                app.log.warn({ status: res.status, hash, checked }, 'doc-audit ack 转发非 200(toast 已乐观回,未持久化)')
+                app.log.warn({ status: res.status, hash, checked }, 'doc-audit ack forward returned non-200; toast already sent, not persisted')
                 return
               }
               if (!data?.card) {
-                app.log.warn({ hash, checked }, 'doc-audit ack:该条不在最新卡,未持久化(toast 已乐观回)')
+                app.log.warn({ hash, checked }, 'doc-audit ack: item not on the latest card; toast already sent, not persisted')
                 return
               }
               if (messageId) {
@@ -265,7 +266,7 @@ export const feishuEventsRoutes: FastifyPluginAsync = async (app) => {
             }
           })()
         })
-        return reply.send({ toast: { type: checked ? 'success' : 'info', content: checked ? '已确认，下次不再提醒' : '已撤销确认' } })
+        return reply.send({ toast: { type: checked ? 'success' : 'info', content: botText(env.BOT_LANG, checked ? 'toastAckChecked' : 'toastAckUnchecked') } })
       }
       // 群聊智能答疑反馈:👍 有帮助 / 👎 没帮助。立即回 toast,转发在 setImmediate 异步
       // (同 3s ack 纪律)。👎 触发反对降权(TTL 内同问题不再答),👍 仅给看板计数。
@@ -276,7 +277,7 @@ export const feishuEventsRoutes: FastifyPluginAsync = async (app) => {
           void forwardToBotBackend('/api/internal/group-qa/feedback', { hash, helpful })
             .catch((e) => app.log.error(e, 'group-qa feedback forward failed'))
         })
-        return reply.send({ toast: { type: helpful ? 'success' : 'info', content: helpful ? '谢谢反馈，记下了' : '已记下，后续少打扰这类问题' } })
+        return reply.send({ toast: { type: helpful ? 'success' : 'info', content: botText(env.BOT_LANG, helpful ? 'toastHelpful' : 'toastNotHelpful') } })
       }
       // 专家升级单回流:负责人点候选按钮(value.kind=expert_escalation)→ 转发对话后端拍板。
       // 立即乐观回 toast(3s ack 纪律);真正的授权(必须是该单负责人/管理员)与幂等由对话后端校验。
@@ -289,7 +290,7 @@ export const feishuEventsRoutes: FastifyPluginAsync = async (app) => {
           void forwardToBotBackend('/api/internal/expert-escalation/resolve', { escalationId, resolution, operatorOpenId })
             .catch((e) => app.log.error(e, 'expert-escalation resolve forward failed'))
         })
-        return reply.send({ toast: { type: 'info', content: '已收到你的决定，正在回流给对话…' } })
+        return reply.send({ toast: { type: 'info', content: botText(env.BOT_LANG, 'toastEscalation') } })
       }
     } else if (fresh) {
       // An event we don't handle (e.g. message_read, bot_added). Log the type

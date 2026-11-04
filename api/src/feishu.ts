@@ -13,6 +13,7 @@ export const feishu: FeishuProvider = createFeishuProvider({
   appSecret: env.FEISHU_APP_SECRET,
   redirectUri: env.FEISHU_REDIRECT_URI,
   scopes: requestedScopes,
+  domain: env.FEISHU_DOMAIN,
 })
 
 /** Scopes we *asked* Feishu for. This requested set (NOT the granted
@@ -27,4 +28,5 @@ export const requestedScopesStr = requestedScopes.join(' ')
 export const feishuDocs = createFeishuDocsClient({
   appId: env.FEISHU_APP_ID,
   appSecret: env.FEISHU_APP_SECRET,
+  domain: env.FEISHU_DOMAIN,
 })

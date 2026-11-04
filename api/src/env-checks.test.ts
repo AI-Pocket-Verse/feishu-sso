@@ -25,11 +25,16 @@ describe('checkInternalToken', () => {
 })
 
 describe('parseTrustProxy', () => {
-  it('maps booleans and hop counts, passes keywords and lists through', () => {
+  it('maps booleans, passes keywords and lists through', () => {
     expect(parseTrustProxy('true')).toBe(true)
     expect(parseTrustProxy('false')).toBe(false)
-    expect(parseTrustProxy('2')).toBe(2)
     expect(parseTrustProxy('loopback')).toBe('loopback')
     expect(parseTrustProxy('10.0.0.0/8,127.0.0.1')).toBe('10.0.0.0/8,127.0.0.1')
+    expect(parseTrustProxy('')).toBe('loopback')
+  })
+
+  it('rejects hop counts that Fastify 5.12 would silently ignore', () => {
+    expect(() => parseTrustProxy('1')).toThrow(/hop count is not supported/)
+    expect(() => parseTrustProxy('2')).toThrow(/TRUST_PROXY=2/)
   })
 })

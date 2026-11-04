@@ -4,14 +4,17 @@ export const DEV_INTERNAL_TOKEN = 'dev-internal-token-change-in-prod'
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
 /**
- * 解析 TRUST_PROXY：'true' / 'false' 转布尔，纯数字转跳数，其余原样交给 Fastify
+ * 解析 TRUST_PROXY：'true' / 'false' 转布尔，其余原样交给 Fastify
  * （proxy-addr 支持 loopback、逗号分隔的 IP / CIDR 列表）。
+ * 不支持跳数：Fastify 5.12 起数字跳数不再生效，req.ip 会静默变成直连对端，直接报错。
  */
-export function parseTrustProxy(v: string): boolean | number | string {
+export function parseTrustProxy(v: string): boolean | string {
   const s = v.trim() || 'loopback'
   if (s.toLowerCase() === 'true') return true
   if (s.toLowerCase() === 'false') return false
-  if (/^\d+$/.test(s)) return Number(s)
+  if (/^\d+$/.test(s)) {
+    throw new Error(`TRUST_PROXY=${s}: hop count is not supported, use the proxy IP / CIDR (e.g. loopback, 10.0.0.0/8)`)
+  }
   return s
 }
 
@@ -26,7 +29,7 @@ export function checkInternalToken(cfg: {
 }): { fatal?: string; warn?: string } {
   const token = cfg.INTERNAL_API_TOKEN
   if (token === '') {
-    return { warn: 'INTERNAL_API_TOKEN 为空：内部接口（notify / reply / reaction / upload-image）将拒绝所有请求' }
+    return { warn: 'INTERNAL_API_TOKEN is empty: internal APIs (notify / reply / reaction / upload-image) will reject all requests' }
   }
   if (token !== DEV_INTERNAL_TOKEN) return {}
   if (cfg.NODE_ENV === 'production') {
@@ -34,7 +37,7 @@ export function checkInternalToken(cfg: {
   }
   // 与 NODE_ENV 解耦：监听非回环地址时，公开写在源码里的占位口令等于没有口令。
   if (!LOOPBACK_HOSTS.has(cfg.HOST)) {
-    return { fatal: `INTERNAL_API_TOKEN 仍是开发占位值，而 HOST=${cfg.HOST} 不是回环地址；请改成强随机口令` }
+    return { fatal: `INTERNAL_API_TOKEN is still the development placeholder while HOST=${cfg.HOST} is not a loopback address; set a strong random secret` }
   }
-  return { warn: 'INTERNAL_API_TOKEN 仍是开发占位值，仅限本机开发使用' }
+  return { warn: 'INTERNAL_API_TOKEN is still the development placeholder; only use it for local development' }
 }

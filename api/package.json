@@ -18,23 +18,24 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.0.0",
-    "@fastify/cors": "^11.0.0",
-    "@fastify/rate-limit": "^11.0.0",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/cors": "^11.4.0",
+    "@fastify/rate-limit": "^11.2.2",
+    "@fastify/static": "^10.1.8",
     "@feishu-sso/api-kit": "workspace:*",
     "@feishu-sso/auth-core": "workspace:*",
     "@feishu-sso/auth-provider-feishu": "workspace:*",
     "@feishu-sso/db-kit": "workspace:*",
     "@prisma/client": "5.22.0",
-    "fastify": "5.10.0",
+    "fastify": "5.12.8",
     "tsx": "^4.16.2",
-    "zod": "3.23.8"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@feishu-sso/tsconfig": "workspace:*",
     "@types/node": "^20.14.10",
     "prisma": "5.22.0",
     "typescript": "5.4.5",
-    "vitest": "2.0.5"
+    "vitest": "4.1.12"
   }
 }

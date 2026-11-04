@@ -37,7 +37,7 @@ async function requireUserId(req: FastifyRequest, reply: FastifyReply): Promise<
 function sendFeishuError(reply: FastifyReply, err: unknown): void {
   if (err instanceof FeishuTokenError) {
     if (err.reason === 'upstream_unavailable') {
-      reply.code(503).send({ error: 'feishu_unavailable', message: '暂时连不上飞书，请稍后重试' })
+      reply.code(503).send({ error: 'feishu_unavailable', message: 'Feishu is temporarily unreachable, please retry later' })
       return
     }
     reply.code(401).send({ error: 'need_relogin' })
@@ -114,7 +114,7 @@ export const feishuDocsRoutes: FastifyPluginAsync = async (app) => {
     ]
     for (const v of values) {
       if (v !== undefined && (typeof v !== 'string' || !SAFE_PARAM.test(v))) {
-        return reply.code(400).send({ error: 'invalid_input', message: '资源 token 格式不正确' })
+        return reply.code(400).send({ error: 'invalid_input', message: 'Invalid resource token format' })
       }
     }
   })

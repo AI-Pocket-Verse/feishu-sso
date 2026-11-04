@@ -11,7 +11,7 @@ vi.mock('@larksuiteoapi/node-sdk', () => {
   return {
     Client,
     AppType: { SelfBuild: 'self' },
-    Domain: { Feishu: 'feishu' },
+    Domain: { Feishu: 'feishu', Lark: 'lark' },
     withUserAccessToken: (t: string) => ({ token: t }),
   }
 })

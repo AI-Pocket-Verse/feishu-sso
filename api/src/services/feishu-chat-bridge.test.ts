@@ -11,7 +11,8 @@ vi.mock('../feishu', () => ({
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
-import { BACKEND_OFF_TEXT, runFeishuChatBridge, analyzePendingImages, fetchWithHeadersTimeout, type BridgeDeps } from './feishu-chat-bridge'
+import { botText } from '../bot-i18n'
+import { runFeishuChatBridge, analyzePendingImages, fetchWithHeadersTimeout, type BridgeDeps } from './feishu-chat-bridge'
 import { clearAllPendingImages } from './feishu-image-buffer'
 
 // 新增的图片中转 deps:旧用例不涉及图片,统一给个不会被调用的兜底实现。
@@ -47,9 +48,34 @@ describe('runFeishuChatBridge', () => {
       deps,
     )
 
-    expect(sent).toEqual([BACKEND_OFF_TEXT])
+    expect(sent).toEqual([botText('zh', 'backendOff')])
     expect(fetchStream).not.toHaveBeenCalled()
     expect(downloadImage).not.toHaveBeenCalled()
+  })
+
+  it('lang=en 时思考卡、错误说明与未接入提示都是英文', async () => {
+    const sent: string[] = []
+    const updates: string[] = []
+    const base = {
+      sendCard: async (_chat: string, card: unknown) => { sent.push(cardText(card)); return 'om_1' },
+      updateCard: async (_id: string, card: unknown) => { updates.push(cardText(card)) },
+      ...imageDeps,
+      now: () => 0,
+      lang: 'en' as const,
+      assistantName: 'Bot',
+    }
+    await runFeishuChatBridge({ chatId: 'oc_1', openId: 'ou_1', text: 'hi' }, {
+      ...base,
+      backendConfigured: false,
+      fetchStream: vi.fn() as unknown as BridgeDeps['fetchStream'],
+    })
+    await runFeishuChatBridge({ chatId: 'oc_1', openId: 'ou_1', text: 'hi' }, {
+      ...base,
+      backendConfigured: true,
+      fetchStream: async () => new Response('{}', { status: 503 }),
+    })
+    expect(sent).toEqual([botText('en', 'backendOff'), 'Bot is thinking…'])
+    expect(updates.at(-1)).toBe('Bot is under maintenance. Please try again later.')
   })
 
   it('sends a thinking card then updates it with the streamed answer', async () => {

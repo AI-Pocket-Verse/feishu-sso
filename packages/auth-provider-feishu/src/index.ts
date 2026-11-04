@@ -15,6 +15,8 @@
  */
 import * as lark from '@larksuiteoapi/node-sdk'
 
+import { AUTHORIZE_HOSTS, sdkDomain, type FeishuDomain } from './domain'
+
 export interface FeishuConfig {
   /** Feishu app_id, e.g. cli_xxxxxxxx */
   appId: string
@@ -25,12 +27,12 @@ export interface FeishuConfig {
   /** OAuth scopes (space-separated when serialized). */
   scopes?: string[]
   /**
-   * Authorize endpoint host. Defaults to the standard passport host; override
+   * Authorize endpoint host. Defaults to the passport host of `domain`; override
    * only for testing.
    */
   authorizeHost?: string
-  /** Domain — feishu.cn by default. */
-  domain?: string
+  /** 飞书中国版（feishu.cn，默认）或国际版 Lark（larksuite.com）。 */
+  domain?: FeishuDomain
 }
 
 export interface FeishuTokenSet {
@@ -68,8 +70,6 @@ export interface FeishuProvider {
   refreshUserToken: (refreshToken: string) => Promise<FeishuTokenSet>
   getUserInfo: (userAccessToken: string) => Promise<FeishuUserInfo>
 }
-
-const DEFAULT_AUTHORIZE_HOST = 'https://passport.feishu.cn/suite/passport/oauth/authorize'
 
 function plusSeconds(seconds: number): Date {
   return new Date(Date.now() + seconds * 1000)
@@ -116,11 +116,11 @@ export function createFeishuProvider(cfg: FeishuConfig): FeishuProvider {
     appId: cfg.appId,
     appSecret: cfg.appSecret,
     appType: lark.AppType.SelfBuild,
-    domain: cfg.domain ?? lark.Domain.Feishu,
+    domain: sdkDomain(cfg.domain),
     disableTokenCache: false,
   })
 
-  const authorizeHost = cfg.authorizeHost ?? DEFAULT_AUTHORIZE_HOST
+  const authorizeHost = cfg.authorizeHost ?? AUTHORIZE_HOSTS[cfg.domain ?? 'feishu']
   const scope = (cfg.scopes ?? []).join(' ')
 
   const getAuthorizeUrl = (state: string): string => {
@@ -195,6 +195,8 @@ export function createFeishuProvider(cfg: FeishuConfig): FeishuProvider {
 
 // Document-domain methods (docx/wiki/media read). Kept in this package so the
 // Feishu SDK stays confined to this one package.
+export * from './domain'
+
 export * from './docs'
 
 // Event-subscription crypto (decrypt + signature verify) for the bot receiver.

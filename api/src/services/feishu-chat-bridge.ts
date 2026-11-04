@@ -3,6 +3,7 @@
 // the card into a "typewriter" reply. This is the ONLY place that joins the
 // Feishu bot (this service owns the SDK) to the chat backend. Deps are injected
 // so the orchestration is unit-testable without a real Feishu app or backend.
+import { botText, type BotLang } from '../bot-i18n'
 import { feishuDocs } from '../feishu'
 import { env } from '../env'
 import { shouldFlush, type ThrottleState } from './card-stream-throttle'
@@ -18,14 +19,11 @@ import {
 // validCard shape check in routes/feishu-docs: a plain object with an `elements` array).
 const textCard = (content: string) => ({ elements: [{ tag: 'div', text: { tag: 'lark_md', content } }] })
 
-/** 没配置对话后端时，机器人对所有提问的统一回复。 */
-export const BACKEND_OFF_TEXT = '机器人还没有接入对话后端，暂时无法回答。请联系管理员配置 BOT_BACKEND_URL。'
-
 // 纯图片消息的提示卡片:三个回传交互按钮(value 在 card.action.trigger 回调里
 // 原样带回,k 用于路由识别)。达到张数上限时不再渲染「继续上传图片」。
-const imagePromptCard = (count: number, dropped: number) => {
-  const note = dropped > 0 ? `（最多 ${MAX_PENDING_IMAGES} 张，已忽略多余的 ${dropped} 张）` : ''
-  const tail = count >= MAX_PENDING_IMAGES ? '已达上限，可输入文字一起提问，或直接分析。' : '你可以继续发图片、输入文字一起提问，或直接分析。'
+const imagePromptCard = (lang: BotLang | undefined, count: number, dropped: number) => {
+  const note = dropped > 0 ? botText(lang, 'imagesDropped', { max: MAX_PENDING_IMAGES, dropped }) : ''
+  const tail = botText(lang, count >= MAX_PENDING_IMAGES ? 'imagesTailFull' : 'imagesTail')
   const button = (op: string, label: string, primary = false) => ({
     tag: 'button',
     text: { tag: 'plain_text', content: label },
@@ -34,13 +32,13 @@ const imagePromptCard = (count: number, dropped: number) => {
   })
   return {
     elements: [
-      { tag: 'div', text: { tag: 'lark_md', content: `已收到 ${count} 张图片${note}，10 分钟内有效。${tail}` } },
+      { tag: 'div', text: { tag: 'lark_md', content: botText(lang, 'imagesReceived', { count, note, tail }) } },
       {
         tag: 'action',
         actions: [
-          ...(count < MAX_PENDING_IMAGES ? [button('more', '继续上传图片')] : []),
-          button('text', '输入文字'),
-          button('analyze', '分析图片', true),
+          ...(count < MAX_PENDING_IMAGES ? [button('more', botText(lang, 'btnMoreImages'))] : []),
+          button('text', botText(lang, 'btnText')),
+          button('analyze', botText(lang, 'btnAnalyze'), true),
         ],
       },
     ],
@@ -56,7 +54,7 @@ export interface InboundImage {
 }
 
 export interface BridgeDeps {
-  /** 是否配置了对话后端；未配置时只回复 BACKEND_OFF_TEXT。 */
+  /** 是否配置了对话后端；未配置时只回复「未接入」文案（backendOff）。 */
   backendConfigured: boolean
   sendCard: (chatId: string, card: unknown) => Promise<string>
   updateCard: (messageId: string, card: unknown) => Promise<void>
@@ -68,6 +66,8 @@ export interface BridgeDeps {
   now: () => number
   /** 卡片里的助手称呼，默认「AI」（env ASSISTANT_NAME）。 */
   assistantName?: string
+  /** 卡片文案语言（env BOT_LANG），缺省中文。 */
+  lang?: BotLang
   /** 诊断日志；默认 console.error。不要传入口令。 */
   logError?: (info: Record<string, unknown>, msg: string) => void
 }
@@ -92,6 +92,7 @@ export async function fetchWithHeadersTimeout(url: string, init: RequestInit, ti
 export const defaultBridgeDeps: BridgeDeps = {
   backendConfigured: !!env.BOT_BACKEND_URL,
   assistantName: env.ASSISTANT_NAME,
+  lang: env.BOT_LANG,
   logError: (info, msg) => console.error(`[feishu-sso] ${msg}`, info),
   sendCard: (chatId, card) => feishuDocs.sendInteractiveCardToChat(chatId, card),
   updateCard: (messageId, card) => feishuDocs.updateInteractiveCard(messageId, card),
@@ -154,7 +155,7 @@ export async function runFeishuChatBridge(
   deps: BridgeDeps = defaultBridgeDeps,
 ): Promise<void> {
   if (!deps.backendConfigured) {
-    await deps.sendCard(args.chatId, textCard(BACKEND_OFF_TEXT))
+    await deps.sendCard(args.chatId, textCard(botText(deps.lang, 'backendOff')))
     return
   }
   const turn = await serializePerChat(pendingKey(args.chatId, args.openId), () => prepareTurn(args, deps))
@@ -188,12 +189,12 @@ async function prepareTurn(
     if (imageUrls.length === 0) {
       await deps.sendCard(
         args.chatId,
-        textCard(imageFailures > 0 ? '图片接收失败了，请重发试试（或检查机器人图片权限）。' : '没有收到可识别的图片内容。'),
+        textCard(botText(deps.lang, imageFailures > 0 ? 'imageReceiveFailed' : 'imageUnrecognized')),
       )
       return null
     }
     const { entry, dropped } = addPendingImages(pendingKey(args.chatId, args.openId), imageUrls, scope, deps.now())
-    const card = imagePromptCard(entry.urls.length, dropped)
+    const card = imagePromptCard(deps.lang, entry.urls.length, dropped)
     if (entry.cardMessageId) {
       // 连发多条图片:原地更新计数;卡片可能已被撤回,更新失败就补发新卡。
       try {
@@ -216,7 +217,7 @@ async function prepareTurn(
       imageUrls.push(...merged)
       if (buffered.cardMessageId) {
         await deps
-          .updateCard(buffered.cardMessageId, textCard(`✅ 已连同 ${buffered.urls.length} 张图片一起分析。`))
+          .updateCard(buffered.cardMessageId, textCard(botText(deps.lang, 'imagesMerged', { count: buffered.urls.length })))
           .catch(() => {})
       }
     }
@@ -236,11 +237,11 @@ export async function analyzePendingImages(
   const buffered = await serializePerChat(pendingKey(args.chatId, args.openId), async () => {
     const b = takePendingImages(pendingKey(args.chatId, args.openId), deps.now())
     if (!b || b.urls.length === 0) {
-      await deps.sendCard(args.chatId, textCard('图片已过期或已分析过，请重新发送图片。')).catch(() => {})
+      await deps.sendCard(args.chatId, textCard(botText(deps.lang, 'imagesExpired'))).catch(() => {})
       return null
     }
     if (b.cardMessageId) {
-      await deps.updateCard(b.cardMessageId, textCard(`✅ 开始分析 ${b.urls.length} 张图片…`)).catch(() => {})
+      await deps.updateCard(b.cardMessageId, textCard(botText(deps.lang, 'imagesAnalyzing', { count: b.urls.length }))).catch(() => {})
     }
     return b
   })
@@ -260,8 +261,9 @@ async function streamAnswerToCard(
 ): Promise<void> {
   const { scope, imageUrls } = args
   const name = deps.assistantName ?? 'AI'
+  const lang = deps.lang
   const logError = deps.logError ?? (() => {})
-  const messageId = await deps.sendCard(args.chatId, textCard(`${name} 正在思考…`))
+  const messageId = await deps.sendCard(args.chatId, textCard(botText(lang, 'thinking', { name })))
 
   let full = ''
   let errored: string | null = null
@@ -282,10 +284,10 @@ async function streamAnswerToCard(
       logError({ status: res.status }, 'bot backend returned non-2xx')
       errored =
         res.status === 503
-          ? `${name} 维护中，请稍后再试。`
+          ? botText(lang, 'maintenance', { name })
           : res.status === 401
-            ? '机器人口令与对话后端不一致（bot_backend_unauthorized），请联系管理员检查 INTERNAL_API_TOKEN。'
-            : `连接 ${name} 失败（bot_backend_http_${res.status}），请稍后再试。`
+            ? botText(lang, 'backendUnauthorized')
+            : botText(lang, 'backendHttp', { name, status: res.status })
     }
     const reader = res.ok ? res.body?.getReader() : undefined
     if (reader) {
@@ -325,9 +327,9 @@ async function streamAnswerToCard(
             // 更新覆盖。Best-effort:丢帧无妨。
             await deps.updateCard(messageId, textCard(data.message)).catch(() => {})
           } else if (ev === 'need_login') {
-            needLogin = data.message ?? '请先在网页端登录一次，再回来提问。'
+            needLogin = data.message ?? botText(lang, 'needLoginDefault')
           } else if (ev === 'error') {
-            errored = data.message ?? '出错了，请稍后再试。'
+            errored = data.message ?? botText(lang, 'errorDefault')
           }
         }
       }
@@ -336,11 +338,16 @@ async function streamAnswerToCard(
     logError({ err: String(err) }, 'bot backend request failed')
     // 拉流中途失败(如对话后端重启 / 网络中断)→ 不让「思考中」卡片卡死,
     // 已累计的部分文本保留,补一句友好错误。
-    if (!errored && !needLogin) errored = `连接 ${name} 失败（bot_backend_unreachable），请稍后再试。`
+    if (!errored && !needLogin) errored = botText(lang, 'backendUnreachable', { name })
   }
 
   // Final card state. A final-update failure propagates so the caller logs it.
   const finalText =
-    needLogin ?? (errored ? (full ? `${full}\n\n（${errored}）` : errored) : (full || `（${name} 暂时没有返回内容，换个说法再问我试试~）`))
+    needLogin ??
+    (errored
+      ? full
+        ? botText(lang, 'errorSuffix', { text: full, error: errored })
+        : errored
+      : full || botText(lang, 'emptyAnswer', { name }))
   await deps.updateCard(messageId, textCard(finalText))
 }

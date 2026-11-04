@@ -8,7 +8,7 @@ User=__SERVICE_USER__
 Group=__SERVICE_USER__
 WorkingDirectory=__INSTALL_DIR__/api
 EnvironmentFile=__INSTALL_DIR__/api/.env.prod
-# 内部包（packages/*）以 TS 源码形式被引用，需要 tsx 加载器才能运行
+# Workspace packages (packages/*) are consumed as TS source and need the tsx loader
 ExecStart=/usr/bin/node --import tsx __INSTALL_DIR__/api/dist/index.js
 Restart=on-failure
 RestartSec=5
