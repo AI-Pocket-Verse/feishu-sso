@@ -86,7 +86,7 @@ const Env = z.object({
   // encryption is enabled.
   FEISHU_EVENT_ENCRYPT_KEY: z.string().default(''),
   FEISHU_EVENT_VERIFICATION_TOKEN: z.string().default(''),
-  // 机器人的对话后端（如 team-knowledge）内网地址。不设置时机器人只回复「未接入」，
+  // 机器人的对话后端内网地址。不设置时机器人只回复「未接入」，
   // 登录、通知、读文档等其余能力不受影响。协议见 docs/bot-backend.md。
   // 末尾的 / 会去掉，避免拼出 //api/...
   BOT_BACKEND_URL: z.preprocess(

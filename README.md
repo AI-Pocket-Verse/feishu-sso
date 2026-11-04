@@ -20,8 +20,6 @@ Single sign-on with Feishu (Lark) for your self-hosted web apps. Users authorize
 | :---: | :---: | :---: |
 | <img src="docs/screenshots/en/mobile.png" width="240" alt="Login page on a phone"> | <img src="docs/screenshots/en/error.png" width="240" alt="Sign-in failed message"> | <img src="docs/screenshots/en/lark.png" width="240" alt="Login page in Lark mode"> |
 
-Sibling projects such as media-compress, multi-model-chat and ai-resume-screener can optionally integrate with it.
-
 Tech stack: Fastify + Prisma (SQLite) backend, React + Vite + Tailwind login page, managed as a pnpm workspace.
 
 ## How it works
@@ -150,12 +148,12 @@ The api loads configuration with Node's built-in `--env-file`: `pnpm dev` reads 
 
 ## Integrate your app
 
-Integrating apps must be served from the same host as this service, with the reverse proxy forwarding `/auth/*` here (see "Deployment"), so they can read the login cookie. Sibling projects only need two settings, described in the optional login section of their READMEs:
+Integrating apps must be served from the same host as this service, with the reverse proxy forwarding `/auth/*` here (see "Deployment"), so they can read the login cookie. On the app side, an integration usually needs just two settings:
 
-- api: `WHOAMI_URL=http://127.0.0.1:4020/api/whoami` (called server to server, bypassing the reverse proxy)
-- web: build with `VITE_SSO_BASE=/auth`
+- Backend: the whoami address, `http://127.0.0.1:4020/api/whoami` (called server to server, bypassing the reverse proxy)
+- Frontend: the login base path, `/auth`
 
-For your own apps, follow these conventions:
+Then follow these conventions:
 
 | Scenario | How |
 | --- | --- |
@@ -192,7 +190,7 @@ The doc-reading endpoints act as the **signed-in user** (send the user's login c
 
 ## Optional: Feishu bot
 
-When a member messages the bot directly or @-mentions it in a group, the bot first replies with an "AI is thinking…" card (rename it with `ASSISTANT_NAME`, switch the language with `BOT_LANG`) and then streams the full answer into it. This service only sends and receives messages; answers come from a chat backend you connect (for example the sibling project team-knowledge), which also decides which model to use. The protocol is in [docs/bot-backend.md](docs/bot-backend.md).
+When a member messages the bot directly or @-mentions it in a group, the bot first replies with an "AI is thinking…" card (rename it with `ASSISTANT_NAME`, switch the language with `BOT_LANG`) and then streams the full answer into it. This service only sends and receives messages; answers come from a chat backend you connect, which also decides which model to use. The protocol is in [docs/bot-backend.md](docs/bot-backend.md).
 
 ```mermaid
 sequenceDiagram

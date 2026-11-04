@@ -2,7 +2,7 @@
 
 English | [简体中文](bot-backend-CN.md)
 
-feishu-sso holds the Feishu app credentials and sends and receives Feishu messages; "how to answer" is left to a separate chat backend (for example the sibling project team-knowledge). The two only talk over the internal HTTP endpoints below.
+feishu-sso holds the Feishu app credentials and sends and receives Feishu messages; "how to answer" is left to a separate chat backend that you provide. The two only talk over the internal HTTP endpoints below.
 
 - Backend URL: feishu-sso's `BOT_BACKEND_URL`, e.g. `http://127.0.0.1:4030`. When it is not set, the bot answers every question with "not connected to a chat backend yet" and none of the forwarding below happens.
 - Authentication: every request carries the header `x-internal-token` with the `INTERNAL_API_TOKEN` both sides share. The backend should reject requests with a wrong token (401).

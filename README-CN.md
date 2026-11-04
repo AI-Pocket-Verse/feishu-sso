@@ -20,8 +20,6 @@
 | :---: | :---: | :---: |
 | <img src="docs/screenshots/zh/mobile.png" width="240" alt="手机端登录页"> | <img src="docs/screenshots/zh/error.png" width="240" alt="登录失败提示"> | <img src="docs/screenshots/zh/lark.png" width="240" alt="Lark 模式登录页"> |
 
-同系列的 media-compress、multi-model-chat、ai-resume-screener 等应用都能以可选方式接入它。
-
 技术栈：Fastify + Prisma（SQLite）后端，React + Vite + Tailwind 登录页，pnpm workspace 管理。
 
 ## 工作原理
@@ -150,12 +148,12 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 
 ## 接入你的应用
 
-接入方与本服务部署在同一个域名下，由反向代理把 `/auth/*` 转给本服务（见「部署」），登录 cookie 才能被接入方读到。同系列应用按各自 README 里可选登录一节的说明配置两项即可：
+接入方与本服务部署在同一个域名下，由反向代理把 `/auth/*` 转给本服务（见「部署」），登录 cookie 才能被接入方读到。接入方一般只需配置两项：
 
-- api 设置 `WHOAMI_URL=http://127.0.0.1:4020/api/whoami`（服务端直连，不经过反向代理）
-- web 构建时设置 `VITE_SSO_BASE=/auth`
+- 后端：whoami 地址 `http://127.0.0.1:4020/api/whoami`（服务端直连，不经过反向代理）
+- 前端：登录服务的路径前缀 `/auth`
 
-自己写的应用照下面的约定接入：
+然后照下面的约定接入：
 
 | 场景 | 做法 |
 | --- | --- |
@@ -192,7 +190,7 @@ api 用 Node 原生的 `--env-file` 加载配置：`pnpm dev` 读 `api/.env.dev`
 
 ## 可选：飞书机器人
 
-成员私聊机器人，或在群里 @ 机器人提问，机器人先回一张「AI 正在思考…」卡片（称呼可用 `ASSISTANT_NAME` 改，语言用 `BOT_LANG` 切换），再流式更新成完整回答。本服务只负责收发消息，回答由你接入的对话后端生成（例如同系列的 team-knowledge），用哪个模型也由对话后端决定，接口约定见 [docs/bot-backend-CN.md](docs/bot-backend-CN.md)。
+成员私聊机器人，或在群里 @ 机器人提问，机器人先回一张「AI 正在思考…」卡片（称呼可用 `ASSISTANT_NAME` 改，语言用 `BOT_LANG` 切换），再流式更新成完整回答。本服务只负责收发消息，回答由你接入的对话后端生成，用哪个模型也由对话后端决定，接口约定见 [docs/bot-backend-CN.md](docs/bot-backend-CN.md)。
 
 ```mermaid
 sequenceDiagram
